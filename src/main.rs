@@ -5,17 +5,31 @@ use lexer::AsmLexer;
 use parser::Parser;
 
 fn main() {
-    let lexer = AsmLexer::new();
-    let _str = r#"thereweboom: hello a, 6
-"#;
-    let tokens = lexer.tokenize(_str);
+    let print_tokens = false;
+    let print_ast = false;
 
-    for token in tokens.iter() {
-        println!("{:?}", token);
+    let lexer = AsmLexer::new();
+    let code = r#".db "Hello, world!"
+    let "Yeah no"
+"#;
+    let tokens = lexer.tokenize(code);
+
+    if print_tokens {
+        for token in tokens.iter() {
+            println!("{:?}", token);
+        }
     }
 
     let mut parser = Parser::new();
-    let node = parser.parse(&tokens).unwrap();
+    let node = match parser.parse(&tokens) {
+        Ok(n) => n,
+        Err(err) => {
+            eprintln!("Error occured while parsing:\n{}", err);
+            return;
+        }
+    };
 
-    println!("{:?}", node);
+    if print_ast {
+        println!("{:#?}", node);
+    }
 }

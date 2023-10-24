@@ -3,7 +3,7 @@ use regex_lexer::{LexerBuilder, Lexer, Token};
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum LexerToken {
     Label, Identifier, Integer, Newline, String, Char, CompilerInstruction,
-    Comment, LParen, RParen, Comma, Plus, Minus, FloatingPoint
+    Comment, LParen, RParen, Comma, Plus, Minus, FloatingPoint, Multiply, Divide
 }
 
 pub struct AsmLexer {
@@ -21,12 +21,14 @@ impl AsmLexer {
             .token(r#"".*""#, LexerToken::String)
             .token(r"^\.\w+", LexerToken::CompilerInstruction)
             .token(r"'.'", LexerToken::Char)
-            .token(r";.*\n", LexerToken::Comment)
+            .token(r"[;#].*\n", LexerToken::Comment)
             .token(r"\(", LexerToken::LParen)
             .token(r"\)", LexerToken::RParen)
             .token(r",", LexerToken::Comma)
             .token(r"\+", LexerToken::Plus)
             .token(r"-", LexerToken::Minus)
+            .token(r"\*", LexerToken::Multiply)
+            .token(r"\/", LexerToken::Divide)
             .ignore(r"[\t\r ]")
             .build().unwrap();
         result
