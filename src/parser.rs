@@ -143,6 +143,7 @@ pub enum NodeType {
     Identifier(String),
     Register(String),
     String(String),
+    Expression,
     Addition,
     Subtraction,
     Multiplication,
@@ -297,12 +298,17 @@ impl Parser {
                     },
                     children: vec![lhs, rhs]
                 };
+                let result = ParserNode {
+                    node_type: NodeType::Expression,
+                    children: vec![node]
+                };
+
                 next = unwrap_from_option!(tokens.next());
 
                 if next.kind != LexerToken::RParen {
                     returnerr!(next)
                 }
-                Ok(node)
+                Ok(result)
             }
             LexerToken::String => {
                 if !str_available {
