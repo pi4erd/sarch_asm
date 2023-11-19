@@ -7,5 +7,4 @@ edition = "2021"
 
 [dependencies]
 regex-lexer = "*"
-serde_json = "*"
-base64 = "*"
+byteorder = "*"

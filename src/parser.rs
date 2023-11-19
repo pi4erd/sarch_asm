@@ -164,12 +164,13 @@ impl ParserNode {
 }
 
 pub struct Parser {
-    pub root: ParserNode
+    pub root: ParserNode,
+    last_label: String
 }
 
 impl Parser {
     pub fn new() -> Self {
-        Self { root: ParserNode::new() }
+        Self { root: ParserNode::new(), last_label: "".to_string() }
     }
 
     pub fn parse(&mut self, tokens: &Vec<Token<LexerToken>>) -> Result<&ParserNode, String> {
@@ -185,10 +186,19 @@ impl Parser {
                     self.root.children.push(instruction);
                 }
                 LexerToken::Label => {
-                    let label_text = &token.text[..token.text.len() - 1];
+                    let txt: &str = &token.text[..token.text.len() - 1];
+
+                    let label_text: String;
+
+                    if txt.starts_with('@') {
+                        label_text = self.last_label.clone() + txt;
+                    } else {
+                        label_text = txt.to_string();
+                        self.last_label = label_text.clone();
+                    }
 
                     let node = ParserNode {
-                        node_type: NodeType::Label(label_text.to_string()),
+                        node_type: NodeType::Label(label_text),
                         children: Vec::new()
                     };
 

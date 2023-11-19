@@ -1,7 +1,9 @@
 use std::collections::HashMap;
+use std::io::Error;
 use std::mem::size_of;
-use base64::prelude::*;
-use std::{fs, io};
+use std::str::Utf8Error;
+use std::{fs, io, str};
+use byteorder::{LittleEndian, ReadBytesExt};
 
 use crate::parser::{ParserNode, NodeType, Registers};
 use crate::symbols::{Instructions, ArgumentTypes};
@@ -22,157 +24,322 @@ macro_rules! argument_eof {
     };
 }
 
-const MAGIC_FORMAT: [u8; 8] = [ 0x13, 0x37, 0x73, 0x61, 0x72, 0x63, 0x68, 0x34 ];
-const MAGIC_FORMAT_NUMBER: u64 = 0x3468637261733713; // Exactly the same as above
+const MAGIC_FORMAT_NUMBER: u64 = 0x3A6863FC6173371B;
 const CURRENT_FORMAT_VERSION: u32 = 1;
 
-enum ObjectInstructionArgument {
-    None, Value, Reference
+#[derive(Debug)]
+struct Reference {
+    argument_pos: u8,
+    rf: String
 }
 
-pub struct ObjectInstructionSymbol {
-    opcode: u16,
-    args: [ObjectInstructionArgument; 2]
+impl Reference {
+    fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
+        let mut me = Self {
+            argument_pos: 0,
+            rf: String::new()
+        };
+
+        me.argument_pos = binary.read_u8()?;
+
+        let mut char_vec = Vec::<u8>::new();
+
+        let mut c = binary.read_u8()?;
+
+        while c != 0 {
+            char_vec.push(c);
+            c = binary.read_u8()?;
+        }
+
+        me.rf = String::from_utf8(char_vec).unwrap();
+
+        Ok(me)
+    }
+}
+#[derive(Debug)]
+enum ConstantSize {
+    Byte, Word, DoubleWord
+}
+
+impl ConstantSize {
+    fn from_u8(n: u8) -> Option<Self> {
+        match n {
+            1 => Some(ConstantSize::Byte),
+            2 => Some(ConstantSize::Word),
+            4 => Some(ConstantSize::DoubleWord),
+            _ => None
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Constant {
+    argument_pos: u8,
+    size: ConstantSize,
+    value: u64
+}
+
+impl Constant {
+    fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
+        let mut me = Self {
+            argument_pos: 0,
+            size: ConstantSize::Byte,
+            value: 0
+        };
+
+        // TODO: Return SIZE INCORRECT error
+        me.size = ConstantSize::from_u8(binary.read_u8()?).unwrap();
+
+        me.value = match me.size {
+            ConstantSize::Byte => binary.read_u8()? as u64,
+            ConstantSize::Word => binary.read_u16::<LittleEndian>()? as u64,
+            ConstantSize::DoubleWord => binary.read_u32::<LittleEndian>()? as u64,
+        };
+
+        Ok(me)
+    }
 }
 
 /**
- * Serialized ObjectLabelSymbol would look like:
- * 0 - 32 - ASCII section name
- * 32 - 64 - ASCII label name
- * 64 - 72 - offset from binary start
+ * 0 - 2: opcode
+ * 2 - 3: reference count
+ * 3 - 4: constant count
+ * 4 - <>: references
+ * <> - <>: constants
+ */
+
+#[derive(Debug)]
+struct InstructionData {
+    ref_count: u8,
+    const_count: u8,
+    opcode: u16,
+    references: Vec<Reference>,
+    constants: Vec<Constant>
+}
+
+impl InstructionData {
+    fn from_bytes(mut binary: &[u8]) -> Result<Self, Error> {
+        let mut me = Self {
+            ref_count: 0,
+            const_count: 0,
+            opcode: 0xFFFF,
+            references: Vec::new(),
+            constants: Vec::new()
+        };
+
+        me.opcode = binary.read_u16::<LittleEndian>()?;
+        me.ref_count = binary.read_u8()?;
+        me.const_count = binary.read_u8()?;
+
+        let mut ptr = 4u16;
+
+        for _ in 0..me.ref_count {
+            let reference = Reference::from_bytes(&mut binary)?;
+            me.references.push(reference);
+        }
+
+        for _ in 0..me.const_count {
+            let constant = Constant::from_bytes(&mut binary)?;
+            me.constants.push(constant);
+        }
+
+        // FIXME: Is there a better way to do this check?
+        for rf in me.references.iter() {
+            for cst in me.constants.iter() {
+                if cst.argument_pos == rf.argument_pos {
+                    return Err(
+                        Error::new(io::ErrorKind::InvalidData, 
+                            format!("Reference and constant are pointing to same argument space. Maybe file corrupted?")))
+                }
+            }
+        }
+
+        Ok(me)
+    }
+}
+
+/**
+ * 0 - 8: ptr
+ * 8 - 9: ptr_to_binary
+ * 9 - infinity: name
  */
 #[derive(Debug)]
 pub struct ObjectLabelSymbol {
-    section: [u8; 32],
-    name: [u8; 32],
-    offset: u64 // offset from binary start
+    name: String,
+    ptr: u64,
+    ptr_to_binary: bool // ptr to binary or instructions
+}
+
+impl ObjectLabelSymbol {
+    fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
+        let mut me = Self {
+            name: String::new(),
+            ptr: 0,
+            ptr_to_binary: false
+        };
+
+        me.ptr = binary.read_u64::<LittleEndian>()?;
+        me.ptr_to_binary = binary.read_u8()? != 0;
+
+        let mut char_vec = Vec::<u8>::new();
+
+        let mut c = binary.read_u8()?;
+
+        while c != 0 {
+            char_vec.push(c);
+            c = binary.read_u8()?;
+        }
+
+        me.name = String::from_utf8(char_vec).unwrap();
+
+        Ok(me)
+    }
 }
 
 /**
- * Serialized ObjectFormatHeader would look like:
+ * Serialized ObjectFormatHeader would look like (exclusive):
  * 0 - 8:   Magic
  * 8 - 16:  offset to labelinfo
- * 16 - 24: offset to binary
- * 24 - 32: length of labelinfo
- * 32 - 40: length of binary
- * 40 - 44: version number
+ * 16 - 24: offset to instructions
+ * 24 - 32: offset to data
+ * 32 - 40: offset to section_info
+ * 40 - 48: length of labelinfo
+ * 48 - 56: length of instructions
+ * 56 - 64: length of data
+ * 64 - 72: length of sections
+ * 72 - 76: version number
  */
+
+const HEADER_SIZE: u64 = 8 * 9 + 4;
+
 #[derive(Debug)]
 struct ObjectFormatHeader {
     magic: u64,
-    offset_to_labelinfo: u64,
-    offset_to_binary: u64,
-    labelinfo_length: u64,
-    binary_length: u64,
+    labelinfo_length: u64, // label count
+    instructions_length: u64, // instruction count
+    data_length: u64, // data length (in bytes)
+    sections_length: u64, // sections count
     version: u32,
 }
+
+impl ObjectFormatHeader {
+    fn new() -> Self {
+        Self {
+            magic: MAGIC_FORMAT_NUMBER,
+            labelinfo_length: 0,
+            instructions_length: 0,
+            sections_length: 0,
+            data_length: 0,
+            version: CURRENT_FORMAT_VERSION
+        }
+    }
+    fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
+        let mut me = ObjectFormatHeader::new();
+
+        me.magic = binary.read_u64::<LittleEndian>()?;
+
+        if me.magic != MAGIC_FORMAT_NUMBER {
+            return Err(Error::new(io::ErrorKind::InvalidData, 
+                format!("Invalid magic number! Invalid format specified!")));
+        }
+
+        /*me.offset_to_labelinfo = binary.read_u64::<LittleEndian>()?;
+        me.offset_to_instructions = binary.read_u64::<LittleEndian>()?;
+        me.offset_to_data = binary.read_u64::<LittleEndian>()?;
+        me.offset_to_sections = binary.read_u64::<LittleEndian>()?;*/
+        me.labelinfo_length = binary.read_u64::<LittleEndian>()?;
+        me.instructions_length = binary.read_u64::<LittleEndian>()?;
+        me.data_length = binary.read_u64::<LittleEndian>()?;
+        me.sections_length = binary.read_u64::<LittleEndian>()?;
+        me.version = binary.read_u32::<LittleEndian>()?;
+
+        Ok(me)
+    }
+}
+
+/**
+ * Binary format description:
+ * # HEADER
+ * # SECTIONS (NYI)
+ * # LABELINFO
+ * # INSTRUCTIONS
+ * # DATA
+ * 
+ * A tightly packed data structure
+ */
 
 #[derive(Debug)]
 pub struct ObjectFormat {
     header: ObjectFormatHeader,
     defines: HashMap<String, i64>, // Defines can be only numbers
-    pub symbols: Vec<ObjectLabelSymbol>,
+    label_symbols: Vec<ObjectLabelSymbol>,
+    instruction_symbols: Vec<InstructionData>,
+    data_binary: Vec<u8>,
     current_section: String
-}
-
-// Method from https://stackoverflow.com/questions/36669427/does-rust-have-a-way-to-convert-several-bytes-to-a-number
-fn as_u32_be(array: &[u8; 4]) -> u32 {
-    ((array[0] as u32) << 24) +
-    ((array[1] as u32) << 16) +
-    ((array[2] as u32) <<  8) +
-    ((array[3] as u32) <<  0)
-}
-fn as_u64_be(array: &[u8; 8]) -> u64 {
-    ((array[0] as u64) << 56) +
-    ((array[1] as u64) << 48) +
-    ((array[2] as u64) << 40) +
-    ((array[3] as u64) << 32) +
-    ((array[4] as u64) << 24) +
-    ((array[5] as u64) << 16) +
-    ((array[6] as u64) <<  8) +
-    ((array[7] as u64) <<  0)
-}
-fn as_u32_le(array: &[u8; 4]) -> u32 {
-    ((array[0] as u32) << 0) +
-    ((array[1] as u32) << 8) +
-    ((array[2] as u32) << 16) +
-    ((array[3] as u32) << 24)
-}
-fn as_u64_le(array: &[u8; 8]) -> u64 {
-    ((array[0] as u64) << 0) +
-    ((array[1] as u64) << 8) +
-    ((array[2] as u64) << 16) +
-    ((array[3] as u64) << 24) +
-    ((array[4] as u64) << 32) +
-    ((array[5] as u64) << 40) +
-    ((array[6] as u64) << 48) +
-    ((array[7] as u64) << 56)
 }
 
 impl ObjectFormat {
     pub fn new() -> Self {
         Self {
-            header: ObjectFormatHeader { 
-                magic: MAGIC_FORMAT_NUMBER,
-                offset_to_labelinfo: size_of::<ObjectFormatHeader>() as u64,
-                offset_to_binary: size_of::<ObjectFormatHeader>() as u64,
-                labelinfo_length: 0,
-                binary_length: 0,
-                version: CURRENT_FORMAT_VERSION
-            },
+            header: ObjectFormatHeader::new(),
             defines: HashMap::new(),
-            symbols: Vec::new(),
-            current_section: "text".to_string()
+            label_symbols: Vec::new(),
+            current_section: "text".to_string(),
+            instruction_symbols: Vec::new(),
+            data_binary: Vec::new()
         }
     }
 
-    fn parse_labels(offset: u64, length: u64, bytes: &Vec<u8>) {
-        let off = offset as usize;
-        let len = length as usize;
-
-        let mut ptr = 0usize;
-
-        while ptr < len {
-
-        }
-    }
-
-    fn from_bytes(bytes: Vec<u8>) -> Result<Self, String> {
-        let magic: &[u8; 8] = bytes.as_slice()[0..8].try_into().unwrap(); // FIXME: fix unwrap
-        let magic_num = as_u64_le(magic);
-
-        if magic_num != MAGIC_FORMAT_NUMBER {
-            return Err(format!("Incorrect object format (magic number does not match)"))
-        }
-
-        let offset_lbl: &[u8; 8] = bytes.as_slice()[8..16].try_into().unwrap(); // FIXME: fix unwrap
-        let offset_lbl_num: u64 = as_u64_le(offset_lbl);
-
-        let offset_bin: &[u8; 8] = bytes.as_slice()[16..24].try_into().unwrap(); // FIXME: fix unwrap
-        let offset_bin_num: u64 = as_u64_le(offset_bin);
-
-        let len_lbl: &[u8; 8] = bytes.as_slice()[24..32].try_into().unwrap(); // FIXME: fix unwrap
-        let len_lbl_num: u64 = as_u64_le(len_lbl);
-
-        let len_bin: &[u8; 8] = bytes.as_slice()[32..40].try_into().unwrap(); // FIXME: fix unwrap
-        let len_bin_num: u64 = as_u64_le(len_bin);
-
-        let ver: &[u8; 4] = bytes.as_slice()[40..44].try_into().unwrap(); // FIXME: fix unwrap
-        let ver_num: u32 = as_u32_le(ver);
-
-        let header = ObjectFormatHeader {
-            magic: magic_num,
-            offset_to_labelinfo: offset_lbl_num,
-            offset_to_binary: offset_bin_num,
-            labelinfo_length: len_lbl_num,
-            binary_length: len_bin_num,
-            version: ver_num
-        };
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, String> {
         let mut me = Self::new();
 
-        me.header = header;
+        let bytes_copy = bytes.clone();
+        let mut binary_slice = bytes_copy.as_slice();
 
+        let header_parse_result = 
+            ObjectFormatHeader::from_bytes(&mut binary_slice);
         
+        me.header = match header_parse_result {
+            Ok(header) => header,
+            Err(e) => {
+                return Err(format!("Error occured while parsing object file: {}", e))
+            }
+        };
+
+        for _ in 0..me.header.labelinfo_length {
+            let label = 
+            match ObjectLabelSymbol::from_bytes(&mut binary_slice) {
+                Ok(label) => label,
+                Err(e) => {
+                    return Err(format!("Error occured while parsing label information from object: {}", e))
+                }
+            };
+            me.label_symbols.push(label);
+        }
+        for _ in 0..me.header.instructions_length {
+            let instruction = 
+            match InstructionData::from_bytes(&mut binary_slice) {
+                Ok(label) => label,
+                Err(e) => {
+                    return Err(format!("Error occured while parsing instructions from object: {}", e))
+                }
+            };
+            me.instruction_symbols.push(instruction);
+        }
+
+        for _ in 0..me.header.data_length {
+            let byte = match binary_slice.read_u8() {
+                Ok(n) => n,
+                Err(e) => {
+                    return Err(
+                        format!("Error occured while parsing a number: {}", e)
+                    )
+                }
+            };
+            me.data_binary.push(byte);
+        }
+
+        println!("{:?}", me);
 
         Ok(me)
     }
@@ -190,20 +357,4 @@ impl ObjectFormat {
     pub fn load_parser_node(&mut self, node: &ParserNode) -> Result<(), String> {
         todo!()
     }
-}
-
-#[test]
-fn test_cast() {
-    let bytes: Vec<u8> = vec![
-        0x13, 0x37, 0x73, 0x61, 0x72, 0x63, 0x68, 0x34, // magic
-        0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // offset label
-        0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // offset binary
-        0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // len label
-        0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // len binary
-        0x01, 0x00, 0x00, 0x00, // ver
-    ];
-    let fmt = ObjectFormat::from_bytes(bytes).unwrap();
-    println!("{:?}", fmt.header);
-
-    assert_eq!(fmt.header.magic, MAGIC_FORMAT_NUMBER);
 }
