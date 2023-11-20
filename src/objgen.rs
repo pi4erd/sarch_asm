@@ -25,8 +25,12 @@ macro_rules! argument_eof {
 }
 
 const MAGIC_FORMAT_NUMBER: u64 = 0x3A6863FC6173371B;
-const CURRENT_FORMAT_VERSION: u32 = 1;
+const CURRENT_FORMAT_VERSION: u32 = 2;
 
+/**
+ * 0 - 1: argument position
+ * 1 - <>: reference name
+ */
 #[derive(Debug)]
 struct Reference {
     argument_pos: u8,
@@ -72,6 +76,11 @@ impl ConstantSize {
     }
 }
 
+/**
+ * 0 - 1: argument position
+ * 1 - 2: const size
+ * 2 - 10: value
+ */
 #[derive(Debug)]
 struct Constant {
     argument_pos: u8,
@@ -87,8 +96,15 @@ impl Constant {
             value: 0
         };
 
-        // TODO: Return SIZE INCORRECT error
-        me.size = ConstantSize::from_u8(binary.read_u8()?).unwrap();
+        me.argument_pos = binary.read_u8()?;
+
+        me.size = match ConstantSize::from_u8(binary.read_u8()?) {
+            Some(n) => n,
+            None => {
+                return Err(Error::new(io::ErrorKind::UnexpectedEof,
+                format!("Wrong constant size in instruction!")))
+            }
+        };
 
         me.value = match me.size {
             ConstantSize::Byte => binary.read_u8()? as u64,
@@ -110,36 +126,30 @@ impl Constant {
 
 #[derive(Debug)]
 struct InstructionData {
-    ref_count: u8,
-    const_count: u8,
     opcode: u16,
     references: Vec<Reference>,
     constants: Vec<Constant>
 }
 
 impl InstructionData {
-    fn from_bytes(mut binary: &[u8]) -> Result<Self, Error> {
+    fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
         let mut me = Self {
-            ref_count: 0,
-            const_count: 0,
             opcode: 0xFFFF,
             references: Vec::new(),
             constants: Vec::new()
         };
 
         me.opcode = binary.read_u16::<LittleEndian>()?;
-        me.ref_count = binary.read_u8()?;
-        me.const_count = binary.read_u8()?;
+        let ref_count = binary.read_u8()?;
+        let const_count = binary.read_u8()?;
 
-        let mut ptr = 4u16;
-
-        for _ in 0..me.ref_count {
-            let reference = Reference::from_bytes(&mut binary)?;
+        for _ in 0..ref_count {
+            let reference = Reference::from_bytes(binary)?;
             me.references.push(reference);
         }
 
-        for _ in 0..me.const_count {
-            let constant = Constant::from_bytes(&mut binary)?;
+        for _ in 0..const_count {
+            let constant = Constant::from_bytes(binary)?;
             me.constants.push(constant);
         }
 
@@ -161,7 +171,7 @@ impl InstructionData {
 /**
  * 0 - 8: ptr
  * 8 - 9: ptr_to_binary
- * 9 - infinity: name
+ * 9 - <>: name
  */
 #[derive(Debug)]
 pub struct ObjectLabelSymbol {
@@ -197,27 +207,78 @@ impl ObjectLabelSymbol {
 }
 
 /**
+ * Section structure description:
+ * 0 - 8: instruction count
+ * 8 - 16: label count
+ * 16 - 24: binary size
+ * 24 - <>: section name
+ * <> - <>: Labels
+ * <> - <>: Instructions
+ * <> - <>: Binary
+ */
+#[derive(Debug)]
+struct SectionData {
+    name: String,
+    instructions: Vec<InstructionData>,
+    labels: Vec<ObjectLabelSymbol>,
+    binary_data: Vec<u8>
+}
+
+impl SectionData {
+    fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
+        let mut me = Self {
+            name: String::new(),
+            instructions: Vec::new(),
+            labels: Vec::new(),
+            binary_data: Vec::new()
+        };
+
+        let instruction_count = binary.read_u64::<LittleEndian>()?;
+        let label_count = binary.read_u64::<LittleEndian>()?;
+        let binary_count = binary.read_u64::<LittleEndian>()?;
+
+        let mut char_vec = Vec::<u8>::new();
+
+        let mut c = binary.read_u8()?;
+
+        while c != 0 {
+            char_vec.push(c);
+            c = binary.read_u8()?;
+        }
+
+        me.name = String::from_utf8(char_vec).unwrap();
+
+        for _ in 0..label_count {
+            let label = ObjectLabelSymbol::from_bytes(binary)?;
+            me.labels.push(label);
+        }
+
+        for _ in 0..instruction_count {
+            let instruction = InstructionData::from_bytes(binary)?;
+            me.instructions.push(instruction);
+        }
+
+        for _ in 0..binary_count {
+            let binary = binary.read_u8()?;
+            me.binary_data.push(binary);
+        }
+
+        Ok(me)
+    }
+}
+
+/**
  * Serialized ObjectFormatHeader would look like (exclusive):
  * 0 - 8:   Magic
- * 8 - 16:  offset to labelinfo
- * 16 - 24: offset to instructions
- * 24 - 32: offset to data
- * 32 - 40: offset to section_info
- * 40 - 48: length of labelinfo
- * 48 - 56: length of instructions
- * 56 - 64: length of data
- * 64 - 72: length of sections
- * 72 - 76: version number
+ * 8 - 16: length of sections
+ * 16 - 20: version number
  */
 
-const HEADER_SIZE: u64 = 8 * 9 + 4;
+const HEADER_SIZE: u64 = 8 * 2 + 4;
 
 #[derive(Debug)]
 struct ObjectFormatHeader {
     magic: u64,
-    labelinfo_length: u64, // label count
-    instructions_length: u64, // instruction count
-    data_length: u64, // data length (in bytes)
     sections_length: u64, // sections count
     version: u32,
 }
@@ -226,10 +287,7 @@ impl ObjectFormatHeader {
     fn new() -> Self {
         Self {
             magic: MAGIC_FORMAT_NUMBER,
-            labelinfo_length: 0,
-            instructions_length: 0,
             sections_length: 0,
-            data_length: 0,
             version: CURRENT_FORMAT_VERSION
         }
     }
@@ -243,13 +301,6 @@ impl ObjectFormatHeader {
                 format!("Invalid magic number! Invalid format specified!")));
         }
 
-        /*me.offset_to_labelinfo = binary.read_u64::<LittleEndian>()?;
-        me.offset_to_instructions = binary.read_u64::<LittleEndian>()?;
-        me.offset_to_data = binary.read_u64::<LittleEndian>()?;
-        me.offset_to_sections = binary.read_u64::<LittleEndian>()?;*/
-        me.labelinfo_length = binary.read_u64::<LittleEndian>()?;
-        me.instructions_length = binary.read_u64::<LittleEndian>()?;
-        me.data_length = binary.read_u64::<LittleEndian>()?;
         me.sections_length = binary.read_u64::<LittleEndian>()?;
         me.version = binary.read_u32::<LittleEndian>()?;
 
@@ -260,10 +311,7 @@ impl ObjectFormatHeader {
 /**
  * Binary format description:
  * # HEADER
- * # SECTIONS (NYI)
- * # LABELINFO
- * # INSTRUCTIONS
- * # DATA
+ * # SECTIONS
  * 
  * A tightly packed data structure
  */
@@ -272,10 +320,7 @@ impl ObjectFormatHeader {
 pub struct ObjectFormat {
     header: ObjectFormatHeader,
     defines: HashMap<String, i64>, // Defines can be only numbers
-    label_symbols: Vec<ObjectLabelSymbol>,
-    instruction_symbols: Vec<InstructionData>,
-    data_binary: Vec<u8>,
-    current_section: String
+    sections: Vec<SectionData>,
 }
 
 impl ObjectFormat {
@@ -283,18 +328,14 @@ impl ObjectFormat {
         Self {
             header: ObjectFormatHeader::new(),
             defines: HashMap::new(),
-            label_symbols: Vec::new(),
-            current_section: "text".to_string(),
-            instruction_symbols: Vec::new(),
-            data_binary: Vec::new()
+            sections: Vec::new()
         }
     }
 
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, String> {
         let mut me = Self::new();
 
-        let bytes_copy = bytes.clone();
-        let mut binary_slice = bytes_copy.as_slice();
+        let mut binary_slice = bytes.as_slice();
 
         let header_parse_result = 
             ObjectFormatHeader::from_bytes(&mut binary_slice);
@@ -306,40 +347,21 @@ impl ObjectFormat {
             }
         };
 
-        for _ in 0..me.header.labelinfo_length {
-            let label = 
-            match ObjectLabelSymbol::from_bytes(&mut binary_slice) {
-                Ok(label) => label,
-                Err(e) => {
-                    return Err(format!("Error occured while parsing label information from object: {}", e))
-                }
-            };
-            me.label_symbols.push(label);
-        }
-        for _ in 0..me.header.instructions_length {
-            let instruction = 
-            match InstructionData::from_bytes(&mut binary_slice) {
-                Ok(label) => label,
-                Err(e) => {
-                    return Err(format!("Error occured while parsing instructions from object: {}", e))
-                }
-            };
-            me.instruction_symbols.push(instruction);
+        if me.header.version != CURRENT_FORMAT_VERSION {
+            println!("Warning: File version does not match with latest format \
+version! It may not be compatible!");
         }
 
-        for _ in 0..me.header.data_length {
-            let byte = match binary_slice.read_u8() {
-                Ok(n) => n,
+        for _ in 0..me.header.sections_length {
+            let section =
+            match SectionData::from_bytes(&mut binary_slice) {
+                Ok(section) => section,
                 Err(e) => {
-                    return Err(
-                        format!("Error occured while parsing a number: {}", e)
-                    )
+                    return Err(format!("Error occured while parsing section: {}", e))
                 }
             };
-            me.data_binary.push(byte);
+            me.sections.push(section);
         }
-
-        println!("{:?}", me);
 
         Ok(me)
     }
