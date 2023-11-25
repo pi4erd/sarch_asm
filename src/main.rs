@@ -24,6 +24,12 @@ fn main() {
     label2:
     loadmd 1 r2
     .section "data"
+    msg1:
+    .db 0 1 2 3 4 5 6 7
+    msg2:
+    .db "Hello, world!" 0x0A 0x00
+    .db 'A'
+    @end:
 "#;
     let tokens = lexer.tokenize(code);
 

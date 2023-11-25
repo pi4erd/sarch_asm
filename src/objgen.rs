@@ -508,6 +508,48 @@ impl ObjectFormat<'_> {
         }
         Ok(())
     }
+    fn _db_ci(&mut self, children: &Vec<ParserNode>) -> Result<(), String> {
+        if self.sections[&self.current_section].instructions.len() != 0 {
+            return Err(format!("Trying to add binary into section with instructions!"))
+        }
+
+        if children.len() == 0 {
+            return Err(format!("Arguments expected for compiler instruction 'db'"))
+        }
+
+        let sec = match self.sections.get_mut(&self.current_section) {
+            Some(s) => s,
+            None => {
+                return Err(format!("Section '{}' not found! Maybe compiler bug?", self.current_section))
+            }
+        };
+
+        for child in children {
+            match &child.node_type {
+                NodeType::ConstInteger(num) => {
+                    if *num < 256 {
+                        // im sorry, but i dont think this will throw an error
+                        sec.binary_data.write_i8(*num as i8).unwrap();
+                    } else if *num < 65536 {
+                        sec.binary_data.write_i16::<LittleEndian>(*num as i16).unwrap();
+                    } else {
+                        sec.binary_data.write_i32::<LittleEndian>(*num as i32).unwrap();
+                    }
+                }
+                NodeType::Negate | NodeType::Expression => {
+                    todo!()
+                }
+                NodeType::String(some_str) => {
+                    for b in some_str.bytes() {
+                        sec.binary_data.write_u8(b).unwrap();
+                    }
+                }
+                _ => unexpected_node!(child)
+            }
+        }
+
+        Ok(())
+    }
     // End compiler instructions
 
     pub fn new() -> Self {
@@ -527,6 +569,7 @@ impl ObjectFormat<'_> {
 
         me.compiler_instructions.insert("section".to_string(), ObjectFormat::_section_ci);
         me.compiler_instructions.insert("define".to_string(), ObjectFormat::_define_ci);
+        me.compiler_instructions.insert("db".to_string(), ObjectFormat::_db_ci);
 
         me
     }
@@ -816,10 +859,20 @@ version! It may not be compatible!");
         for child in node.children.iter() {
             match &child.node_type {
                 NodeType::CompilerInstruction(instr) => {
-                    self.do_compiler_instruction(instr, &child.children)?;
+                    match self.do_compiler_instruction(instr, &child.children) {
+                        Ok(_) => {},
+                        Err(e) => {
+                            return Err(format!("Error while executing compiler instruction: {}", e))
+                        }
+                    }
                 }
                 NodeType::Instruction(instr) => {
-                    self.process_instruction(instr, &child.children)?;
+                    match self.process_instruction(instr, &child.children) {
+                        Ok(_) => {},
+                        Err(e) => {
+                            return Err(format!("Error while processing instruction: {}", e))
+                        }
+                    }
                 }
                 NodeType::Label(name) => {
                     let current_section = match self.sections.get_mut(&self.current_section) {
@@ -830,8 +883,12 @@ version! It may not be compatible!");
                     };
                     let mut binlen = 0usize;
 
-                    for instrs in current_section.instructions.iter() {
-                        binlen += instructions.get_instruction(instrs.opcode).unwrap().get_size();
+                    if current_section.binary_data.len() == 0 {
+                        for instrs in current_section.instructions.iter() {
+                            binlen += instructions.get_instruction(instrs.opcode).unwrap().get_size();
+                        }
+                    } else {
+                        binlen = current_section.binary_data.len();
                     }
 
                     if current_section.labels.contains_key(name) {

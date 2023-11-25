@@ -274,8 +274,22 @@ impl Parser {
         let rgs = Registers::new();
         match current_token.kind {
             LexerToken::Integer => {
-                let numtxt = current_token.text;
-                let try_convert = numtxt.parse::<i64>();
+                let mut numtxt = current_token.text;
+                let try_convert: Result<i64, std::num::ParseIntError>;
+
+                if numtxt.starts_with("0x") {
+                    numtxt = numtxt.strip_prefix("0x").unwrap();
+                    try_convert = i64::from_str_radix(numtxt, 16);
+                } else if numtxt.starts_with("0b") {
+                    numtxt = numtxt.strip_prefix("0b").unwrap();
+                    try_convert = i64::from_str_radix(numtxt, 2);
+                } else if numtxt.starts_with("0d") {
+                    numtxt = numtxt.strip_prefix("0d").unwrap();
+                    try_convert = i64::from_str_radix(numtxt, 10);
+                } else {
+                    try_convert = i64::from_str_radix(numtxt, 10);
+                }
+
                 let num = match try_convert {
                     Ok(n) => n,
                     Err(err) => {
@@ -284,6 +298,19 @@ impl Parser {
                 };
                 let node = ParserNode {
                     node_type: NodeType::ConstInteger(num),
+                    children: Vec::new()
+                };
+                Ok(node)
+            }
+            LexerToken::Char => {
+                let char = match current_token.text[1..current_token.text.chars().count() - 1].bytes().next() {
+                    Some(c) => c,
+                    None => {
+                        return Err(format!("Cannot parse nonexistant character in Char!"))
+                    }
+                };
+                let node = ParserNode {
+                    node_type: NodeType::ConstInteger(char as i64),
                     children: Vec::new()
                 };
                 Ok(node)
@@ -325,7 +352,7 @@ impl Parser {
                     return Err(format!("Using String where not allowed: {} at {}..{}",
                     current_token.text, current_token.span.start, current_token.span.end))
                 }
-                let _str = &current_token.text[1..current_token.text.len() - 1];
+                let _str = &current_token.text[1..current_token.text.chars().count() - 1];
                 let node = ParserNode {
                     node_type: NodeType::String(_str.to_string()),
                     children: Vec::new()

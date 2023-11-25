@@ -11,6 +11,7 @@ pub struct AsmLexer {
 }
 
 impl AsmLexer {
+    // TODO: Add octal support!
     fn build_lexer() -> Lexer<LexerToken> {
         let result = LexerBuilder::new()
             .token(r"[A-Za-z0-9_]+", LexerToken::Identifier)
