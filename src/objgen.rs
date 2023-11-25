@@ -1,12 +1,12 @@
 use std::collections::HashMap;
-use std::io::Error;
-use std::mem::size_of;
-use std::str::Utf8Error;
+use std::io::{Error, Write};
 use std::{fs, io, str};
-use byteorder::{LittleEndian, ReadBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::parser::{ParserNode, NodeType, Registers};
 use crate::symbols::{Instructions, ArgumentTypes};
+
+// TODO: Add support for math expressions in object file binary (maybe)
 
 macro_rules! unexpected_node {
     ($node:expr) => {
@@ -64,8 +64,18 @@ impl Reference {
 
         Ok(me)
     }
+    fn write_bytes(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
+        binary.write_u8(self.argument_pos)?;
+
+        for c in self.rf.bytes() {
+            binary.write_u8(c)?;
+        }
+        binary.write_u8(0)?;
+
+        Ok(())
+    }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum ConstantSize {
     Byte, Word, DoubleWord
 }
@@ -77,6 +87,13 @@ impl ConstantSize {
             2 => Some(ConstantSize::Word),
             4 => Some(ConstantSize::DoubleWord),
             _ => None
+        }
+    }
+    fn to_u8(&self) -> u8 {
+        match self {
+            Self::Byte => 1,
+            Self::Word => 2,
+            Self::DoubleWord => 4
         }
     }
 }
@@ -106,7 +123,7 @@ impl Constant {
         me.size = match ConstantSize::from_u8(binary.read_u8()?) {
             Some(n) => n,
             None => {
-                return Err(Error::new(io::ErrorKind::UnexpectedEof,
+                return Err(Error::new(io::ErrorKind::InvalidData,
                 format!("Wrong constant size in instruction!")))
             }
         };
@@ -118,6 +135,18 @@ impl Constant {
         };
 
         Ok(me)
+    }
+    fn write_bytes(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
+        binary.write_u8(self.argument_pos)?;
+        binary.write_u8(self.size.to_u8())?;
+
+        match self.size {
+            ConstantSize::Byte => binary.write_i8(self.value as i8),
+            ConstantSize::Word => binary.write_i16::<LittleEndian>(self.value as i16),
+            ConstantSize::DoubleWord => binary.write_i32::<LittleEndian>(self.value as i32)
+        }?;
+
+        Ok(())
     }
 }
 
@@ -171,6 +200,29 @@ impl InstructionData {
 
         Ok(me)
     }
+    fn write_bytes(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
+        let mut for_debug: Vec<u8> = Vec::new();
+
+        binary.write_u16::<LittleEndian>(self.opcode)?;
+        binary.write_u8(self.references.len() as u8)?;
+        binary.write_u8(self.constants.len() as u8)?;
+
+        for_debug.write_u16::<LittleEndian>(self.opcode)?;
+        for_debug.write_u8(self.references.len() as u8)?;
+        for_debug.write_u8(self.constants.len() as u8)?;
+        
+        for rf in self.references.iter() {
+            rf.write_bytes(binary)?;
+            rf.write_bytes(&mut for_debug)?;
+        }
+
+        for cst in self.constants.iter() {
+            cst.write_bytes(binary)?;
+            cst.write_bytes(&mut for_debug)?;
+        }
+
+        Ok(())
+    }
 }
 
 /**
@@ -208,6 +260,17 @@ impl ObjectLabelSymbol {
         me.name = String::from_utf8(char_vec).unwrap();
 
         Ok(me)
+    }
+    fn write_bytes(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
+        binary.write_u64::<LittleEndian>(self.ptr_instr)?;
+        binary.write_u64::<LittleEndian>(self.ptr_binary)?;
+
+        for b in self.name.bytes() {
+            binary.write_u8(b)?;
+        }
+        binary.write_u8(0)?;
+
+        Ok(())
     }
 }
 
@@ -282,6 +345,35 @@ impl SectionData {
 
         Ok(me)
     }
+    fn write_bytes(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
+        if self.binary_data.len() != 0 && self.instructions.len() != 0 {
+            return Err(Error::new(io::ErrorKind::InvalidInput,
+                format!("Binary and instructions cannot coexist in a single section!")))
+        }
+
+        binary.write_u64::<LittleEndian>(self.instructions.len() as u64)?;
+        binary.write_u64::<LittleEndian>(self.labels.len() as u64)?;
+        binary.write_u64::<LittleEndian>(self.binary_data.len() as u64)?;
+
+        for b in self.name.bytes() {
+            binary.write_u8(b)?;
+        }
+        binary.write_u8(0)?;
+
+        for (_, lbl) in self.labels.iter() {
+            lbl.write_bytes(binary)?;
+        }
+
+        for instr in self.instructions.iter() {
+            instr.write_bytes(binary)?;
+        }
+
+        for byt in self.binary_data.iter() {
+            binary.write_u8(*byt)?;
+        }
+
+        Ok(())
+    }
 }
 
 /**
@@ -291,7 +383,7 @@ impl SectionData {
  * 16 - 20: version number
  */
 
-const HEADER_SIZE: u64 = 8 * 2 + 4;
+pub const HEADER_SIZE: u64 = 8 * 2 + 4;
 
 #[derive(Debug)]
 struct ObjectFormatHeader {
@@ -323,11 +415,13 @@ impl ObjectFormatHeader {
 
         Ok(me)
     }
-}
+    fn write_bytes(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
+        binary.write_u64::<LittleEndian>(self.magic)?;
+        binary.write_u64::<LittleEndian>(self.sections_length)?;
+        binary.write_u32::<LittleEndian>(self.version)?;
 
-#[derive(Debug, Clone, Copy)]
-enum DefineType {
-    String, Float, Int
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -355,7 +449,7 @@ pub struct ObjectFormat<'a> {
 const DEFAULT_SECTION_NAME: &str = "text";
 
 impl ObjectFormat<'_> {
-    fn evaluate_expression(&self, expr: &ParserNode) -> Result<ParserNode, String> {
+    fn evaluate_expression(&self, _expr: &ParserNode) -> Result<ParserNode, String> {
         todo!()
     }
 
@@ -435,6 +529,48 @@ impl ObjectFormat<'_> {
         me.compiler_instructions.insert("define".to_string(), ObjectFormat::_define_ci);
 
         me
+    }
+
+    fn generate_binary(&self) -> Result<Vec<u8>, String> {
+        let mut binary = Vec::<u8>::new();
+
+        match self.header.write_bytes(&mut binary) {
+            Ok(_) => {},
+            Err(e) => {
+                return Err(format!("Error occured while generating binary header: {}", e))
+            }
+        }
+
+        for (sec_name, sec) in self.sections.iter() {
+            match sec.write_bytes(&mut binary) {
+                Ok(_) => {},
+                Err(e) => {
+                    return Err(format!("Error occured while generating \
+                    binary for section '{}': {}", sec_name, e))
+                }
+            }
+        }
+
+        Ok(binary)
+    }
+
+    pub fn save_object(&self, path: &str) -> Result<(), String> {
+        let binary = self.generate_binary()?;
+
+        let mut file = match fs::File::create(path) {
+            Ok(f) => f,
+            Err(e) => {
+                return Err(format!("Failed to open file to write: {e}"))
+            }
+        };
+        
+        match file.write_all(binary.as_slice()) {
+            Ok(_) => (),
+            Err(e) =>
+                return Err(format!("Failed to write binary to file: {}", e))
+        }
+
+        Ok(())
     }
 
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, String> {
@@ -697,7 +833,7 @@ version! It may not be compatible!");
                     for instrs in current_section.instructions.iter() {
                         binlen += instructions.get_instruction(instrs.opcode).unwrap().get_size();
                     }
-                    
+
                     if current_section.labels.contains_key(name) {
                         return Err(format!("Label '{}' is redefined!", name))
                     }
