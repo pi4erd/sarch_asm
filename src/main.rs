@@ -12,13 +12,21 @@ use crate::objgen::ObjectFormat;
 
 fn main() {
     let print_tokens = false;
-    let print_ast = true;
+    let print_ast = false;
 
     let lexer = AsmLexer::new();
-    let code = r#"label:
-    @sublabel:
-    .section "text"
+    let code = r#"
+    .define test 0.0
+    label1:
+    loadmd test r3
+    loadmd test r3
+    @bruh:
+    loadmd test r3
+    loadmd test r3
+    @dir:
+    loadmd test r3
     .section "data"
+    label2:
 "#;
     let tokens = lexer.tokenize(code);
 
@@ -41,7 +49,7 @@ fn main() {
         println!("{:#?}", node);
     }
 
-    const TEST: bool = true;
+    const TEST: bool = false;
 
     if TEST {
         // 0x3A6863FC6173371B
@@ -49,7 +57,7 @@ fn main() {
             // header
             0x1B, 0x37, 0x73, 0x61, 0xFC, 0x63, 0x68, 0x3A, // magic
             0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // section count
-            0x02, 0x00, 0x00, 0x00, // version
+            0x03, 0x00, 0x00, 0x00, // version
 
             // section
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // instruction count
@@ -58,7 +66,7 @@ fn main() {
             b't', b'e', b'x', b't', 0x00, // section name
             // label
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ptr
-            0x00, // is to binary
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ptr bin
             b'H', b'e', b'l', b'l', 0x00, // label name
             // instruction
             0x00, 0x00, // opcode
@@ -79,8 +87,8 @@ fn main() {
             0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // binary size
             b'd', b'a', b't', b'a', 0x00, // section name
             // label
-            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ptr
-            0x01, // is to binary
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ptr
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ptr bin
             b'b', b'e', b'e', b'f', 0x00, // label name
             // binary
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // binmsg
@@ -101,5 +109,5 @@ fn main() {
             return
         }
     }
-    println!("{:?}", objgenerator);
+    println!("{:#?}", objgenerator);
 }

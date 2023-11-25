@@ -18,6 +18,11 @@ macro_rules! wrong_argument {
         return Err(format!("Incorrect argument of {:?}. {:?} expected.", $node.node_type, $expected))
     };
 }
+macro_rules! bad_compinstr {
+    ($iname:expr) => {
+        return Err(format!("Invalid compiler instruction '{}'. No such instruction exists!", $iname))
+    };
+}
 macro_rules! argument_eof {
     () => {
         return Err(format!("Unexpected end of arguments"))
@@ -25,7 +30,7 @@ macro_rules! argument_eof {
 }
 
 const MAGIC_FORMAT_NUMBER: u64 = 0x3A6863FC6173371B;
-const CURRENT_FORMAT_VERSION: u32 = 2;
+const CURRENT_FORMAT_VERSION: u32 = 3;
 
 /**
  * 0 - 1: argument position
@@ -85,7 +90,7 @@ impl ConstantSize {
 struct Constant {
     argument_pos: u8,
     size: ConstantSize,
-    value: u64
+    value: i64
 }
 
 impl Constant {
@@ -107,9 +112,9 @@ impl Constant {
         };
 
         me.value = match me.size {
-            ConstantSize::Byte => binary.read_u8()? as u64,
-            ConstantSize::Word => binary.read_u16::<LittleEndian>()? as u64,
-            ConstantSize::DoubleWord => binary.read_u32::<LittleEndian>()? as u64,
+            ConstantSize::Byte => binary.read_i8()? as i64,
+            ConstantSize::Word => binary.read_i16::<LittleEndian>()? as i64,
+            ConstantSize::DoubleWord => binary.read_i32::<LittleEndian>()? as i64,
         };
 
         Ok(me)
@@ -169,27 +174,27 @@ impl InstructionData {
 }
 
 /**
- * 0 - 8: ptr
- * 8 - 9: ptr_to_binary
- * 9 - <>: name
+ * 0 - 8: ptr instr
+ * 8 - 16: ptr bin
+ * 16 - <>: name
  */
 #[derive(Debug)]
 pub struct ObjectLabelSymbol {
     name: String,
-    ptr: u64,
-    ptr_to_binary: bool // ptr to binary or instructions
+    ptr_instr: u64,
+    ptr_binary: u64,
 }
 
 impl ObjectLabelSymbol {
     fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
         let mut me = Self {
             name: String::new(),
-            ptr: 0,
-            ptr_to_binary: false
+            ptr_instr: 0,
+            ptr_binary: 0
         };
 
-        me.ptr = binary.read_u64::<LittleEndian>()?;
-        me.ptr_to_binary = binary.read_u8()? != 0;
+        me.ptr_instr = binary.read_u64::<LittleEndian>()?;
+        me.ptr_binary = binary.read_u64::<LittleEndian>()?;
 
         let mut char_vec = Vec::<u8>::new();
 
@@ -220,18 +225,21 @@ impl ObjectLabelSymbol {
 struct SectionData {
     name: String,
     instructions: Vec<InstructionData>,
-    labels: Vec<ObjectLabelSymbol>,
+    labels: HashMap<String, ObjectLabelSymbol>,
     binary_data: Vec<u8>
 }
 
 impl SectionData {
-    fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
-        let mut me = Self {
-            name: String::new(),
+    fn new() -> Self {
+        Self {
+            name: "text".to_string(),
             instructions: Vec::new(),
-            labels: Vec::new(),
+            labels: HashMap::new(),
             binary_data: Vec::new()
-        };
+        }
+    }
+    fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
+        let mut me = Self::new();
 
         let instruction_count = binary.read_u64::<LittleEndian>()?;
         let label_count = binary.read_u64::<LittleEndian>()?;
@@ -250,7 +258,16 @@ impl SectionData {
 
         for _ in 0..label_count {
             let label = ObjectLabelSymbol::from_bytes(binary)?;
-            me.labels.push(label);
+
+            let name = label.name.clone();
+
+            if me.labels.contains_key(&name) {
+                return Err(Error::new(io::ErrorKind::InvalidData,
+                format!("Invalid label information for section '{}'! Label '{}' already exists!",
+                me.name, name)))
+            }
+
+            me.labels.insert(label.name.clone(), label);
         }
 
         for _ in 0..instruction_count {
@@ -308,6 +325,16 @@ impl ObjectFormatHeader {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum DefineType {
+    String, Float, Int
+}
+
+#[derive(Debug, Clone)]
+struct Define {
+    node: ParserNode
+}
+
 /**
  * Binary format description:
  * # HEADER
@@ -317,19 +344,97 @@ impl ObjectFormatHeader {
  */
 
 #[derive(Debug)]
-pub struct ObjectFormat {
+pub struct ObjectFormat<'a> {
     header: ObjectFormatHeader,
-    defines: HashMap<String, i64>, // Defines can be only numbers
-    sections: Vec<SectionData>,
+    defines: HashMap<String, Define>,
+    sections: HashMap<String, SectionData>,
+    compiler_instructions: HashMap<String, fn(&mut Self, &Vec<ParserNode>) -> Result<(), String>>,
+    current_section: String
 }
 
-impl ObjectFormat {
+const DEFAULT_SECTION_NAME: &str = "text";
+
+impl ObjectFormat<'_> {
+    fn evaluate_expression(&self, expr: &ParserNode) -> Result<ParserNode, String> {
+        todo!()
+    }
+
+    // Compiler instructions
+    fn _section_ci(&mut self, children: &Vec<ParserNode>) -> Result<(), String> {
+        let child = match children.get(0) {
+            Some(n) => n,
+            None => {
+                return Err(format!("Expected argument for 'section'"))
+            }
+        };
+        match &child.node_type {
+            NodeType::String(name) => {
+                let mut sec = SectionData::new();
+                sec.name = name.clone();
+
+                self.current_section = sec.name.clone();
+
+                if !self.sections.contains_key(&sec.name) {
+                    self.sections.insert(sec.name.clone(), sec);
+                    self.header.sections_length += 1;
+                }
+
+                Ok(())
+            }
+            _ => wrong_argument!(child, NodeType::String("".to_string()))
+        }
+    }
+    fn _define_ci(&mut self, children: &Vec<ParserNode>) -> Result<(), String> {
+        let name_node = match children.get(0) {
+            Some(n) => n,
+            None => {
+                return Err(format!("Expected argument 0 for 'define'"))
+            }
+        };
+        let data = match children.get(1) {
+            Some(n) => n,
+            None => {
+                return Err(format!("Expected argument 1 for 'define'"))
+            }
+        };
+        let name = match &name_node.node_type {
+            NodeType::Identifier(name) => name,
+            _ => wrong_argument!(name_node, NodeType::String(String::new()))
+        };
+        match &data.node_type {
+            NodeType::Expression => {
+                let n = self.evaluate_expression(data)?;
+                self.defines.insert(name.clone(), Define {
+                    node: n
+                });
+            }
+            _ => {
+                self.defines.insert(name.clone(), Define { node: data.clone() });
+            }
+        }
+        Ok(())
+    }
+    // End compiler instructions
+
     pub fn new() -> Self {
-        Self {
+        let mut me = Self {
             header: ObjectFormatHeader::new(),
             defines: HashMap::new(),
-            sections: Vec::new()
-        }
+            sections: HashMap::new(),
+            compiler_instructions: HashMap::new(),
+            current_section: DEFAULT_SECTION_NAME.to_string(),
+        };
+
+        let default_section = SectionData::new();
+
+        me.sections.insert(default_section.name.clone(), default_section);
+
+        me.header.sections_length = 1;
+
+        me.compiler_instructions.insert("section".to_string(), ObjectFormat::_section_ci);
+        me.compiler_instructions.insert("define".to_string(), ObjectFormat::_define_ci);
+
+        me
     }
 
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, String> {
@@ -360,7 +465,7 @@ version! It may not be compatible!");
                     return Err(format!("Error occured while parsing section: {}", e))
                 }
             };
-            me.sections.push(section);
+            me.sections.insert(section.name.clone(), section);
         }
 
         Ok(me)
@@ -376,7 +481,239 @@ version! It may not be compatible!");
         
         ObjectFormat::from_bytes(content)
     }
+
+    fn do_compiler_instruction(&mut self, name: &str, children: &Vec<ParserNode>) -> Result<(), String> {
+        let instr = match self.compiler_instructions.get(name) {
+            Some(i) => i,
+            None => bad_compinstr!(name)
+        };
+        instr(self, children)
+    }
+
+    fn process_instruction(&mut self, name: &str, children: &Vec<ParserNode>) -> Result<(), String> {
+        let registers = Registers::new();
+
+        let instructions = Instructions::new();
+        let opcode = match instructions.get_opcode(name) {
+            Some(opc) => opc,
+            None => {
+                return Err(format!("Invalid instruction '{}'!", name))
+            }
+        };
+        let instruction = instructions.get_instruction(opcode).unwrap();
+
+        if instruction.args.len() != children.len() {
+            return Err(format!("Argument count for instruction '{}' ({}) is incorrect! {} expected!",
+            name, children.len(), instruction.args.len()))
+        }
+
+        let mut instr = InstructionData {
+            opcode,
+            references: Vec::new(),
+            constants: Vec::new()
+        };
+
+        // Welcome to the hellhole
+        // This is a stupid piece of code
+        // And yes, I don't want to change it
+        // Because it's perfect
+        // There is nothing closer to perfection than this
+        // You will understand it soon too
+        // When you dive in this code
+        // When you try to revise it
+        // You will be able to see
+        // How actually beautiful this code is
+        // How accurate every character has been placed
+        // How thin is the line between its life and death
+        // And how easy it is to break it
+        // Now, that you're warned
+        // Go ahead. Do what you want
+        // You don't need to bother yourself with this text anymore
+
+        for i in 0..children.len() {
+            let arg = &children[i];
+            let exparg = instruction.args[i];
+            match &arg.node_type { // TODO: Implement expressions
+                NodeType::Identifier(name) => {
+                    if self.defines.contains_key(name) {
+                        let def = &self.defines[name];
+
+                        match exparg {
+                            ArgumentTypes::FloatingPoint |
+                            ArgumentTypes::AbsPointer |
+                            ArgumentTypes::RelPointer |
+                            ArgumentTypes::Immediate32 => {
+                                match &def.node.node_type {
+                                    NodeType::ConstInteger(n) => {
+                                        instr.constants.push(Constant { 
+                                            argument_pos: i as u8, 
+                                            size: ConstantSize::DoubleWord, 
+                                            value: *n
+                                        });
+                                    }
+                                    NodeType::ConstFloat(n) => {
+                                        instr.constants.push(Constant { 
+                                            argument_pos: i as u8,
+                                            size: ConstantSize::DoubleWord,
+                                            value: (*n).to_bits() as i64
+                                        });
+                                    }
+                                    _ => unexpected_node!(def.node)
+                                }
+                            }
+                            ArgumentTypes::Immediate16 => {
+                                match &def.node.node_type {
+                                    NodeType::ConstInteger(n) => {
+                                        instr.constants.push(Constant { 
+                                            argument_pos: i as u8, 
+                                            size: ConstantSize::Word,
+                                            value: *n & 0xFFFF
+                                        });
+                                    }
+                                    _ => unexpected_node!(def.node)
+                                }
+                            }
+                            ArgumentTypes::Immediate8 => {
+                                match &def.node.node_type {
+                                    NodeType::ConstInteger(n) => {
+                                        instr.constants.push(Constant { 
+                                            argument_pos: i as u8, 
+                                            size: ConstantSize::Byte, 
+                                            value: *n & 0xFF
+                                        });
+                                    }
+                                    _ => unexpected_node!(def.node)
+                                }
+                            }
+                            _ => unexpected_node!(def.node)
+                        }
+                    } else {
+                        instr.references.push(Reference {
+                            argument_pos: i as u8,
+                            rf: name.clone()
+                        })
+                    }
+                }
+                NodeType::ConstFloat(n) => {
+                    match exparg {
+                        ArgumentTypes::FloatingPoint |
+                        ArgumentTypes::Immediate32 => {
+                            instr.constants.push(Constant {
+                                argument_pos: i as u8,
+                                size: ConstantSize::DoubleWord,
+                                value: (*n).to_bits() as i64
+                            });
+                        }
+                        _ => unexpected_node!(arg)
+                    }
+                }
+                NodeType::ConstInteger(n) => {
+                    match exparg {
+                        ArgumentTypes::AbsPointer |
+                        ArgumentTypes::RelPointer |
+                        ArgumentTypes::Immediate32 => {
+                            instr.constants.push(Constant {
+                                argument_pos: i as u8,
+                                size: ConstantSize::DoubleWord,
+                                value: *n as i64
+                            });
+                        }
+                        ArgumentTypes::Immediate16 => {
+                            instr.constants.push(Constant {
+                                argument_pos: i as u8,
+                                size: ConstantSize::DoubleWord,
+                                value: (*n & 0xFFFF) as i64
+                            });
+                        }
+                        ArgumentTypes::Immediate8 => {
+                            instr.constants.push(Constant {
+                                argument_pos: i as u8,
+                                size: ConstantSize::DoubleWord,
+                                value: (*n & 0xFF) as i64
+                            });
+                        }
+                        _ => unexpected_node!(arg)
+                    }
+                }
+                NodeType::Register(name) => {
+                    match exparg {
+                        ArgumentTypes::Register16 |
+                        ArgumentTypes::Register32 |
+                        ArgumentTypes::Register8 => {
+                            instr.constants.push(Constant {
+                                argument_pos: i as u8,
+                                size: ConstantSize::DoubleWord,
+                                value: match registers.get(name) {
+                                    Some(r) => *r as i64,
+                                    None => {
+                                        return Err(format!("Invalid register \
+                                        name '{}'. Maybe compiler error!",
+                                        name))
+                                    }
+                                }
+                            });
+                        }
+                        _ => unexpected_node!(arg)
+                    }
+                }
+                _ => unexpected_node!(arg)
+            }
+        }
+
+        match self.sections.get_mut(&self.current_section) {
+            Some(s) => s,
+            None => {
+                return Err(format!("Section '{}' does not exist! Maybe compiler bug?", self.current_section))
+            }
+        }.instructions.push(instr);
+        
+        Ok(())
+    }
+
     pub fn load_parser_node(&mut self, node: &ParserNode) -> Result<(), String> {
-        todo!()
+        let instructions = Instructions::new();
+
+        if node.node_type != NodeType::Program {
+            return Err(format!("Cannot load not Program node into objgen"))
+        }
+
+        for child in node.children.iter() {
+            match &child.node_type {
+                NodeType::CompilerInstruction(instr) => {
+                    self.do_compiler_instruction(instr, &child.children)?;
+                }
+                NodeType::Instruction(instr) => {
+                    self.process_instruction(instr, &child.children)?;
+                }
+                NodeType::Label(name) => {
+                    let current_section = match self.sections.get_mut(&self.current_section) {
+                        Some(s) => s,
+                        None => {
+                            return Err(format!("Section '{}' does not exist! Maybe compiler bug?", self.current_section))
+                        }
+                    };
+                    let mut binlen = 0usize;
+
+                    for instrs in current_section.instructions.iter() {
+                        binlen += instructions.get_instruction(instrs.opcode).unwrap().get_size();
+                    }
+                    
+                    if current_section.labels.contains_key(name) {
+                        return Err(format!("Label '{}' is redefined!", name))
+                    }
+
+                    let label = ObjectLabelSymbol {
+                        name: name.clone(),
+                        ptr_instr: current_section.instructions.len() as u64,
+                        ptr_binary: binlen as u64,
+                    };
+                    
+                    current_section.labels.insert(name.clone(), label);
+                }
+                _ => unexpected_node!(child)
+            }
+        }
+
+        Ok(())
     }
 }
