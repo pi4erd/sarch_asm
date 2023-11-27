@@ -827,7 +827,7 @@ version! It may not be compatible!");
                         ArgumentTypes::Register8 => {
                             instr.constants.push(Constant {
                                 argument_pos: i as u8,
-                                size: ConstantSize::DoubleWord,
+                                size: ConstantSize::Byte,
                                 value: match registers.get(name) {
                                     Some(r) => *r as i64,
                                     None => {
