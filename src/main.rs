@@ -8,7 +8,7 @@ pub mod linker;
 use lexer::AsmLexer;
 use parser::Parser;
 
-use crate::objgen::ObjectFormat;
+use crate::{objgen::ObjectFormat, linker::Linker};
 
 fn main() {
     let print_tokens = false;
@@ -85,4 +85,16 @@ fn main() {
     if print_test_object {
         println!("Test object tree: {:#?}", test_obj);
     }
+
+    let mut linker = Linker::new();
+    
+    linker.load_symbols(test_obj);
+
+    match linker.save_binary("testbin", None) {
+        Ok(_) => {},
+        Err(e) => {
+            eprintln!("Error occured while linking: {e}");
+            return
+        }
+    };
 }

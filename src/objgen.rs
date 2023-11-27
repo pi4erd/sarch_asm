@@ -1,3 +1,9 @@
+/**
+ * objgen.rs
+ * 
+ * Generates object files for SArch32 ASM. Default extension: .sao
+ */
+
 use std::collections::HashMap;
 use std::io::{Error, Write};
 use std::{fs, io, str};
@@ -36,7 +42,7 @@ const CURRENT_FORMAT_VERSION: u32 = 3;
  * 0 - 1: argument position
  * 1 - <>: reference name
  */
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Reference {
     argument_pos: u8,
     rf: String
@@ -103,7 +109,7 @@ impl ConstantSize {
  * 1 - 2: const size
  * 2 - 10: value
  */
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Constant {
     argument_pos: u8,
     size: ConstantSize,
@@ -158,7 +164,7 @@ impl Constant {
  * <> - <>: constants
  */
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct InstructionData {
     opcode: u16,
     references: Vec<Reference>,
@@ -230,7 +236,7 @@ impl InstructionData {
  * 8 - 16: ptr bin
  * 16 - <>: name
  */
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ObjectLabelSymbol {
     name: String,
     ptr_instr: u64,
@@ -284,7 +290,7 @@ impl ObjectLabelSymbol {
  * <> - <>: Instructions
  * <> - <>: Binary
  */
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct SectionData {
     name: String,
     instructions: Vec<InstructionData>,
@@ -385,7 +391,7 @@ impl SectionData {
 
 pub const HEADER_SIZE: u64 = 8 * 2 + 4;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ObjectFormatHeader {
     magic: u64,
     sections_length: u64, // sections count
@@ -437,8 +443,8 @@ struct Define {
  * A tightly packed data structure
  */
 
-#[derive(Debug)]
-pub struct ObjectFormat<'a> {
+#[derive(Debug, Clone)]
+pub struct ObjectFormat {
     header: ObjectFormatHeader,
     defines: HashMap<String, Define>,
     sections: HashMap<String, SectionData>,
@@ -448,7 +454,7 @@ pub struct ObjectFormat<'a> {
 
 const DEFAULT_SECTION_NAME: &str = "text";
 
-impl ObjectFormat<'_> {
+impl ObjectFormat {
     fn evaluate_expression(&self, _expr: &ParserNode) -> Result<ParserNode, String> {
         todo!()
     }
