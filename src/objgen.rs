@@ -10,7 +10,7 @@ use std::{fs, io, str};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::parser::{ParserNode, NodeType, Registers};
-use crate::symbols::{Instructions, ArgumentTypes};
+use crate::symbols::{Instructions, ArgumentTypes, Instruction};
 
 // TODO: Add support for math expressions in object file binary (maybe)
 
@@ -43,9 +43,9 @@ const CURRENT_FORMAT_VERSION: u32 = 3;
  * 1 - <>: reference name
  */
 #[derive(Debug, Clone)]
-struct Reference {
-    argument_pos: u8,
-    rf: String
+pub struct Reference {
+    pub argument_pos: u8,
+    pub rf: String
 }
 
 impl Reference {
@@ -82,7 +82,7 @@ impl Reference {
     }
 }
 #[derive(Debug, Clone, Copy)]
-enum ConstantSize {
+pub enum ConstantSize {
     Byte, Word, DoubleWord
 }
 
@@ -110,10 +110,10 @@ impl ConstantSize {
  * 2 - 10: value
  */
 #[derive(Debug, Clone)]
-struct Constant {
-    argument_pos: u8,
-    size: ConstantSize,
-    value: i64
+pub struct Constant {
+    pub argument_pos: u8,
+    pub size: ConstantSize,
+    pub value: i64
 }
 
 impl Constant {
@@ -165,10 +165,10 @@ impl Constant {
  */
 
 #[derive(Debug, Clone)]
-struct InstructionData {
-    opcode: u16,
-    references: Vec<Reference>,
-    constants: Vec<Constant>
+pub struct InstructionData {
+    pub opcode: u16,
+    pub references: Vec<Reference>,
+    pub constants: Vec<Constant>
 }
 
 impl InstructionData {
@@ -291,11 +291,12 @@ impl ObjectLabelSymbol {
  * <> - <>: Binary
  */
 #[derive(Debug, Clone)]
-struct SectionData {
+pub struct SectionData {
     name: String,
-    instructions: Vec<InstructionData>,
-    labels: HashMap<String, ObjectLabelSymbol>,
-    binary_data: Vec<u8>
+    pub instructions: Vec<InstructionData>,
+    pub labels: HashMap<String, ObjectLabelSymbol>,
+    pub binary_data: Vec<u8>,
+    pub binary_section: bool
 }
 
 impl SectionData {
@@ -304,9 +305,75 @@ impl SectionData {
             name: "text".to_string(),
             instructions: Vec::new(),
             labels: HashMap::new(),
-            binary_data: Vec::new()
+            binary_data: Vec::new(),
+            binary_section: false
         }
     }
+    pub fn append_other(&mut self, mut other: SectionData) -> Result<(), String> {
+        if self.binary_section != other.binary_section {
+            return Err(format!("Cannot merge binary section with non-binary one"))
+        }
+        if self.binary_section {
+            let old_bin_length = self.binary_data.len() as u64;
+            self.binary_data.append(&mut other.binary_data);
+            
+            for (label_name, mut label) in other.labels {
+                if self.labels.contains_key(&label_name) {
+                    return Err(format!("Cannot merge two binary sections with similar labels!"))
+                }
+                label.ptr_binary += old_bin_length;
+                self.labels.insert(label_name, label);
+            }
+        } else {
+            let old_instr_length = self.instructions.len() as u64;
+            self.instructions.append(&mut other.instructions);
+            
+            for (label_name, mut label) in other.labels {
+                if self.labels.contains_key(&label_name) {
+                    return Err(format!("Cannot merge two binary sections with similar labels!"))
+                }
+                label.ptr_instr += old_instr_length;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn get_binary_size(&self) -> usize {
+        if self.binary_section {
+            return self.binary_data.len()
+        }
+
+        let instructions = Instructions::new();
+
+        let mut binary_len = 0usize;
+
+        for instr in self.instructions.iter() {
+            // Unwrap, because we assume a section is valid from object file
+            binary_len += instructions.get_instruction(instr.opcode).unwrap().get_size();
+        }
+
+        binary_len
+    }
+
+    pub fn get_binary_position(&self, index: usize) -> usize {
+        if self.binary_section {
+            return index
+        }
+
+        let instructions = Instructions::new();
+
+        let mut binary_index = 0usize;
+
+        for (idx, instr) in self.instructions.iter().enumerate() {
+            if idx == index { break }
+            // I won't explain why I'm adding unwraps anymore
+            binary_index += instructions.get_instruction(instr.opcode).unwrap().get_size();
+        }
+
+        binary_index
+    }
+
     fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
         let mut me = Self::new();
 
@@ -348,6 +415,8 @@ impl SectionData {
             let binary = binary.read_u8()?;
             me.binary_data.push(binary);
         }
+
+        me.binary_section = me.binary_data.len() != 0;
 
         Ok(me)
     }
@@ -447,7 +516,7 @@ struct Define {
 pub struct ObjectFormat {
     header: ObjectFormatHeader,
     defines: HashMap<String, Define>,
-    sections: HashMap<String, SectionData>,
+    pub sections: HashMap<String, SectionData>,
     compiler_instructions: HashMap<String, fn(&mut Self, &Vec<ParserNode>) -> Result<(), String>>,
     current_section: String
 }

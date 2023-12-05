@@ -18,18 +18,12 @@ fn main() {
 
     let lexer = AsmLexer::new();
     let code = r#"
+    .section "text"
     label1:
-    loadmd 0 r0
-    loadmd 1 r1
-    label2:
-    loadmd 1 r2
-    .section "data"
-    msg1:
-    .db 0 1 2 3 4 5 6 7
-    msg2:
-    .db "Hello, world!" 0x0A 0x00
-    .db 'A'
-    @end:
+    .db 0x10 0x11
+
+    .section "text"
+    .db 0x12 0x13
 "#;
     let tokens = lexer.tokenize(code);
 
