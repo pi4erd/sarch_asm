@@ -10,7 +10,7 @@ use std::{fs, io, str};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::parser::{ParserNode, NodeType, Registers};
-use crate::symbols::{Instructions, ArgumentTypes, Instruction};
+use crate::symbols::{Instructions, ArgumentTypes};
 
 // TODO: Add support for math expressions in object file binary (maybe)
 
@@ -27,11 +27,6 @@ macro_rules! wrong_argument {
 macro_rules! bad_compinstr {
     ($iname:expr) => {
         return Err(format!("Invalid compiler instruction '{}'. No such instruction exists!", $iname))
-    };
-}
-macro_rules! argument_eof {
-    () => {
-        return Err(format!("Unexpected end of arguments"))
     };
 }
 

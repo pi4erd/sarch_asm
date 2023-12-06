@@ -1,5 +1,5 @@
-use crate::{objgen::{ObjectFormat, SectionData, InstructionData, ConstantSize}, symbols::Instructions};
-use std::{fs, io::{Write, Read}, collections::{HashMap, VecDeque}, ops::Index};
+use crate::{objgen::{ObjectFormat, SectionData, InstructionData}, symbols::Instructions};
+use std::{fs, io::{Write, Read}, collections::HashMap};
 use byteorder::{LittleEndian, WriteBytesExt};
 use serde::{Serialize, Deserialize};
 
@@ -264,7 +264,7 @@ impl Linker {
                 self.write_instruction_binary(binary, instruction)?;
             }
         }
-        
+
         Ok(())
     }
 
