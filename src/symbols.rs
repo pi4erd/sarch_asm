@@ -8,6 +8,24 @@ pub enum ArgumentTypes {
     FloatingPoint
 }
 
+impl ArgumentTypes {
+    pub fn get_size(&self) -> usize {
+        match self {
+            ArgumentTypes::AbsPointer |
+            ArgumentTypes::RelPointer |
+            ArgumentTypes::FloatingPoint |
+            ArgumentTypes::Immediate32 => 4,
+
+            ArgumentTypes::Register16 |
+            ArgumentTypes::Register32 |
+            ArgumentTypes::Register8 |
+            ArgumentTypes::Immediate8 => 1,
+            
+            ArgumentTypes::Immediate16 => 2
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Instruction {
     pub name: &'static str,
@@ -23,19 +41,7 @@ impl Instruction {
         let mut size = if self.extended_opcode() { 2usize } else { 1usize };
 
         for arg in self.args.iter() {
-            size += match arg {
-                ArgumentTypes::AbsPointer |
-                ArgumentTypes::RelPointer |
-                ArgumentTypes::FloatingPoint |
-                ArgumentTypes::Immediate32 => 4,
-
-                ArgumentTypes::Register16 |
-                ArgumentTypes::Register32 |
-                ArgumentTypes::Register8 |
-                ArgumentTypes::Immediate8 => 1,
-                
-                ArgumentTypes::Immediate16 => 2
-            };
+            size += arg.get_size();
         }
 
         size

@@ -1,7 +1,18 @@
-use crate::{objgen::{ObjectFormat, SectionData, InstructionData}, symbols::Instructions};
-use std::{fs, io::{Write, Read}, collections::HashMap, ops::Index};
+use crate::{objgen::{ObjectFormat, SectionData, InstructionData, ConstantSize}, symbols::Instructions};
+use std::{fs, io::{Write, Read}, collections::{HashMap, VecDeque}, ops::Index};
 use byteorder::{LittleEndian, WriteBytesExt};
 use serde::{Serialize, Deserialize};
+
+macro_rules! calculate_alignment {
+    ($num:expr, $alignment:expr) => {
+        // TODO: Optimize macro
+        if $num > ($num / $alignment) * $alignment {
+            ($num / $alignment) * $alignment + $alignment
+        } else {
+            ($num / $alignment) * $alignment
+        }
+    };
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct LinkStructureSection {
@@ -86,6 +97,11 @@ impl LinkStructure {
     }
 }
 
+struct ResolvedReference {
+    size: usize,
+    value: i64
+}
+
 pub struct Linker {
     link_structure: LinkStructure,
     section_symbols: HashMap<String, SectionData>,
@@ -130,25 +146,28 @@ impl Linker {
         }
     }
 
-    fn get_section_offset(&self, section_name: &str) -> Result<usize, String> {
+    fn get_section_offset(&self, section_name: &str) -> Result<u64, String> {
         let link_section_index = match self.link_structure.get_section_index(section_name) {
             Some(lsi) => lsi,
-            None => return Err(format!("Linker script doesn't define section '{}': Undefined reference", section_name))
+            None => return Err(format!("Linker script doesn't define section '{}': Undefined reference.", section_name))
         };
 
-        let mut offset = 0usize;
+        let mut offset = 0u64;
 
         // For every section before this
         for (idx, link_section) in self.link_structure.sections.iter().enumerate() {
             if idx == link_section_index { break }
             let section = &self.section_symbols[&link_section.name];
 
-            offset += section.get_binary_size();
+            offset += section.get_binary_size() as u64;
         }
 
-        
+        let alignment = self.link_structure.get_section(section_name)
+            .unwrap().alignment;
 
-        Ok(offset)
+        let result = calculate_alignment!(offset, alignment);
+
+        Ok(result)
     }
 
     fn write_instruction_binary(&self, binary: &mut Vec<u8>, instruction: &InstructionData) -> Result<(), String> {
@@ -176,28 +195,65 @@ impl Linker {
         }
 
         // Resolve symbols
-        let mut resolved_references = Vec::<u32>::new();
+        let mut resolved_references = HashMap::<u8, ResolvedReference>::new();
 
         for reference in instruction.references.iter() {
             let sec_name = match self.find_section_with_label(&reference.rf) {
                 Some(s) => s,
                 None => {
-                    return Err(format!("Failed to resolve reference '{}': Undefined reference", reference.rf))
+                    return Err(format!("Failed to resolve reference '{}': Undefined reference.", reference.rf))
                 }
             };
             let section = &self.section_symbols[sec_name];
 
-            let link_sec = match self.link_structure.get_section(sec_name) {
-                Some(s) => s,
-                None => {
-                    return Err(format!("Linker script doesn't define information about section '{}'!", sec_name))
-                }
-            };
+            // Unwrap because previous statement, read it again pls;;;
+            let section_local_offset = section.get_label_binary_offset(&reference.rf).unwrap();
 
-            
+            let section_offset = self.get_section_offset(sec_name)?;
+
+            let offset = section_offset + section_local_offset;
+
+            let arg_size = instr_symbol.args[reference.argument_pos as usize].get_size();
+
+            resolved_references.insert(reference.argument_pos, ResolvedReference { 
+                size: arg_size, value: offset as i64 
+            });
         }
 
-        todo!()
+        for constant in instruction.constants.iter() {
+            resolved_references.insert(constant.argument_pos, ResolvedReference {
+                size: constant.size.get_size(), value: constant.value
+            });
+        }
+        
+        // FIXME: Actually i am stupid and have no idea how to do this otherwise.
+        // If anyone has any idea on how to improve this piece of... code...
+        // Please help me. I would appreciate any direction anyone is willing to give me.
+
+        // Why do i have to borrow a ZERO?
+        if let Some(arg) = resolved_references.get(&0) {
+            match arg.size {
+                // FIXME: UNWRAPS
+                1 => bin.write_u8(arg.value as u8).unwrap(),
+                2 => bin.write_u16::<LittleEndian>(arg.value as u16).unwrap(),
+                4 => bin.write_u32::<LittleEndian>(arg.value as u32).unwrap(),
+                _ => return Err(format!("How did we get here?"))
+            }
+        }
+        // instructions are packed, and not aligned, so it should be fine to do this, right?
+        if let Some(arg) = resolved_references.get(&1) {
+            match arg.size {
+                // FIXME: UNWRAPS
+                1 => bin.write_u8(arg.value as u8).unwrap(),
+                2 => bin.write_u16::<LittleEndian>(arg.value as u16).unwrap(),
+                4 => bin.write_u32::<LittleEndian>(arg.value as u32).unwrap(),
+                _ => return Err(format!("How did we get here?"))
+            }
+        }
+
+        binary.append(&mut bin);
+
+        Ok(())
     }
 
     fn section_binary(&self, binary: &mut Vec<u8>, section: &SectionData) -> Result<(), String> {
@@ -208,10 +264,11 @@ impl Linker {
                 self.write_instruction_binary(binary, instruction)?;
             }
         }
-        todo!()
+        
+        Ok(())
     }
 
-    fn generate_binary(&mut self, ls_path: Option<&str>) -> Result<Vec<u8>, String> {
+    pub fn generate_binary(&mut self, ls_path: Option<&str>) -> Result<Vec<u8>, String> {
         self.link_structure = match ls_path {
             Some(lsp) => LinkStructure::from_file(lsp)?,
             None => LinkStructure::new()
@@ -225,17 +282,24 @@ impl Linker {
 
         let mut binary = Vec::<u8>::new();
 
-        for (sec_name, sec_bin) in self.section_binaries.iter() {
-            let section = match self.link_structure.get_section(sec_name) {
-                Some(s) => s,
-                None => {
-                    return Err(format!("Cannot find section structure definition for '{sec_name}'."))
-                }
-            };
-            
-            
-        }
+        for section in self.link_structure.sections.iter() {
+            if let Some(mut bin) = self.section_binaries.get_mut(&section.name) {
+                binary.append(&mut bin);
+            } else {
+                return Err(format!("Undefined reference to section '{}': \
+                linker section is defined but not found in binaries!", section.name))
+            }
 
+            let offset = self.get_section_offset(&section.name)?;
+            let end = offset + self.section_symbols[&section.name].get_binary_size() as u64;
+
+            let alignment_bit_count = calculate_alignment!(end, section.alignment) - end;
+
+            // God forgive me
+            for _ in 0..alignment_bit_count {
+                binary.push(0);
+            }
+        }
 
         Ok(binary)
     }

@@ -102,6 +102,9 @@ impl ConstantSize {
             Self::DoubleWord => 4
         }
     }
+    pub fn get_size(&self) -> usize {
+        self.to_u8() as usize
+    }
 }
 
 /**
@@ -356,22 +359,30 @@ impl SectionData {
         binary_len
     }
 
-    pub fn get_binary_position(&self, index: usize) -> usize {
+    pub fn get_binary_position(&self, index: u64) -> u64 {
         if self.binary_section {
             return index
         }
 
         let instructions = Instructions::new();
 
-        let mut binary_index = 0usize;
+        let mut binary_index = 0u64;
 
         for (idx, instr) in self.instructions.iter().enumerate() {
-            if idx == index { break }
+            if idx as u64 == index { break }
             // I won't explain why I'm adding unwraps anymore
-            binary_index += instructions.get_instruction(instr.opcode).unwrap().get_size();
+            binary_index += instructions.get_instruction(instr.opcode).unwrap().get_size() as u64;
         }
 
         binary_index
+    }
+
+    pub fn get_label_binary_offset(&self, label_name: &str) -> Option<u64> {
+        let label = self.labels.get(label_name)?;
+
+        if self.binary_section { return Some(label.ptr_binary) }
+
+        Some(self.get_binary_position(label.ptr_instr))
     }
 
     fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
