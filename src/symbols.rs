@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
+// TODO: Implement conditions
+
 #[derive(Clone, Copy, Debug)]
 pub enum ArgumentTypes {
     AbsPointer, RelPointer,
     Register32, Register16, Register8,
     Immediate32, Immediate16, Immediate8,
-    FloatingPoint
+    FloatingPoint, Condition
 }
 
 impl ArgumentTypes {
@@ -19,7 +21,8 @@ impl ArgumentTypes {
             ArgumentTypes::Register16 |
             ArgumentTypes::Register32 |
             ArgumentTypes::Register8 |
-            ArgumentTypes::Immediate8 => 1,
+            ArgumentTypes::Immediate8 |
+            ArgumentTypes::Condition => 1,
             
             ArgumentTypes::Immediate16 => 2
         }
@@ -62,6 +65,13 @@ impl Instructions {
         me.ilist.insert("iadd", Instruction { name: "add", opcode: 3, args: vec![ArgumentTypes::Immediate32, ArgumentTypes::Register32] });
         me.ilist.insert("loadmd", Instruction { name: "loadm dw", opcode: 4, args: vec![ArgumentTypes::AbsPointer, ArgumentTypes::Register32] });
         me.ilist.insert("loadid", Instruction { name: "loadi dw", opcode: 5, args: vec![ArgumentTypes::Immediate32, ArgumentTypes::Register32] });
+
+        me.ilist.insert("madd", Instruction { name: "add", opcode: 6, args: vec![ArgumentTypes::AbsPointer, ArgumentTypes::Register32] });
+        me.ilist.insert("loadmb", Instruction { name: "loadm b", opcode: 7, args: vec![ArgumentTypes::AbsPointer, ArgumentTypes::Register8] });
+        me.ilist.insert("loadib", Instruction { name: "loadi b", opcode: 8, args: vec![ArgumentTypes::Immediate8, ArgumentTypes::Register8] });
+        me.ilist.insert("jmp", Instruction { name: "jmp", opcode: 9, args: vec![ArgumentTypes::AbsPointer] });
+        me.ilist.insert("jpc", Instruction { name: "jpc", opcode: 10, args: vec![ArgumentTypes::AbsPointer, ArgumentTypes::Condition] });
+        me.ilist.insert("call", Instruction { name: "call", opcode: 11, args: vec![ArgumentTypes::AbsPointer] });
 
         me
     }

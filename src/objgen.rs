@@ -12,8 +12,6 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use crate::parser::{ParserNode, NodeType, Registers};
 use crate::symbols::{Instructions, ArgumentTypes};
 
-// TODO: Add support for math expressions in object file binary (maybe)
-
 macro_rules! unexpected_node {
     ($node:expr) => {
         return Err(format!("Unexpected node {:?}!", $node.node_type))
@@ -76,6 +74,7 @@ impl Reference {
         Ok(())
     }
 }
+
 #[derive(Debug, Clone, Copy)]
 pub enum ConstantSize {
     Byte, Word, DoubleWord
