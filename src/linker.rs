@@ -258,7 +258,7 @@ impl Linker {
 
     fn section_binary(&self, binary: &mut Vec<u8>, section: &SectionData) -> Result<(), String> {
         if section.binary_section {
-            binary.append(&mut section.binary_data.clone())
+            binary.append(&mut section.binary_data.clone());
         } else {
             for instruction in section.instructions.iter() {
                 self.write_instruction_binary(binary, instruction)?;

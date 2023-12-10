@@ -2,6 +2,32 @@ use std::collections::HashMap;
 
 // TODO: Implement conditions
 
+pub struct Conditions {
+    conditions: HashMap<&'static str, u8>
+}
+
+impl Conditions {
+    pub fn new() -> Self {
+        let mut me = Self { conditions: HashMap::new() };
+
+        me.conditions.insert("OV", 0);
+        me.conditions.insert("CR", 1);
+        me.conditions.insert("NG", 2);
+        me.conditions.insert("ZR", 3);
+
+        me.conditions.insert("NV", 0 + 32);
+        me.conditions.insert("NC", 1 + 32);
+        me.conditions.insert("NN", 2 + 32);
+        me.conditions.insert("NZ", 3 + 32);
+
+        me
+    }
+
+    pub fn get_condition(&self, name: &str) -> Option<&u8> {
+        self.conditions.get(name)
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum ArgumentTypes {
     AbsPointer, RelPointer,

@@ -41,13 +41,15 @@ fn main() -> ExitCode {
     // Inputs #####
     let mut input_file = String::new();
     let mut output_file = "output.bin".to_string();
-    let mut linker_script: Option<String> = None;
+    let mut linker_script: Option<&str> = None;
     let mut lib_files = Vec::<String>::new();
     let mut output_file_specified = false;
     let mut link_object = true;
     let mut input_is_object = false;
     let mut keep_object = false;
     // ############
+
+    let mut linker_script_filename: String;
 
     let program = args.next().unwrap();
 
@@ -92,7 +94,7 @@ fn main() -> ExitCode {
                     print_usage(&program);
                     return ExitCode::FAILURE
                 }
-                let filename = match args.next() {
+                linker_script_filename = match args.next() {
                     Some(f) => f,
                     None => {
                         eprintln!("Expected filename after '{}'.", arg);
@@ -100,7 +102,7 @@ fn main() -> ExitCode {
                         return ExitCode::FAILURE;
                     }
                 };
-                linker_script = Some(filename);
+                linker_script = Some(&linker_script_filename);
             }
             "-l" | "--link-object" => {
                 // Adds object file to the linker
@@ -216,7 +218,7 @@ fn main() -> ExitCode {
             }
         };
         
-        match linker.save_binary(&output_file, None) {
+        match linker.save_binary(&output_file, linker_script) {
             Ok(_) => {},
             Err(e) => {
                 eprintln!("Error occured while linking: {e}");

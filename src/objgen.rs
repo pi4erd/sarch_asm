@@ -10,7 +10,7 @@ use std::{fs, io, str};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::parser::{ParserNode, NodeType, Registers};
-use crate::symbols::{Instructions, ArgumentTypes};
+use crate::symbols::{Instructions, ArgumentTypes, Conditions};
 
 macro_rules! unexpected_node {
     ($node:expr) => {
@@ -25,6 +25,11 @@ macro_rules! wrong_argument {
 macro_rules! bad_compinstr {
     ($iname:expr) => {
         return Err(format!("Invalid compiler instruction '{}'. No such instruction exists!", $iname))
+    };
+}
+macro_rules! unexpected_eof {
+    ($msg:expr) => {
+        return Err(format!("Unexpected end of file: {}", $msg))
     };
 }
 
@@ -589,7 +594,14 @@ impl ObjectFormat {
         Ok(())
     }
     fn _db_ci(&mut self, children: &Vec<ParserNode>) -> Result<(), String> {
-        if self.sections[&self.current_section].instructions.len() != 0 {
+        let sec = match self.sections.get_mut(&self.current_section) {
+            Some(s) => s,
+            None => {
+                return Err(format!("Section '{}' not found! Maybe compiler bug?", self.current_section))
+            }
+        };
+
+        if sec.instructions.len() != 0 {
             return Err(format!("Trying to add binary into section with instructions!"))
         }
 
@@ -597,12 +609,7 @@ impl ObjectFormat {
             return Err(format!("Arguments expected for compiler instruction 'db'"))
         }
 
-        let sec = match self.sections.get_mut(&self.current_section) {
-            Some(s) => s,
-            None => {
-                return Err(format!("Section '{}' not found! Maybe compiler bug?", self.current_section))
-            }
-        };
+        sec.binary_section = true;
 
         for child in children {
             match &child.node_type {
@@ -630,6 +637,37 @@ impl ObjectFormat {
 
         Ok(())
     }
+    fn _resb_ci(&mut self, children: &Vec<ParserNode>) -> Result<(), String> {
+        let sec = match self.sections.get_mut(&self.current_section) {
+            Some(s) => s,
+            None => {
+                return Err(format!("Section '{}' not found! Maybe compiler bug?", self.current_section))
+            }
+        };
+
+        if sec.instructions.len() != 0 {
+            return Err(format!("Trying to add binary into section with instructions!"))
+        }
+
+        sec.binary_section = true;
+
+        let mut binary = Vec::<u8>::new();
+
+        let child_node = match children.get(0) { 
+            Some(c) => c,
+            None => unexpected_eof!("RESB instruction requires 1 argument, 0 provided")
+        };
+
+        if let NodeType::ConstInteger(n) = child_node.node_type {
+            for _ in 0..n {
+                binary.push(0);
+            }
+        }
+
+        sec.binary_data.append(&mut binary);
+
+        Ok(())
+    }
     // End compiler instructions
 
     pub fn new() -> Self {
@@ -650,6 +688,7 @@ impl ObjectFormat {
         me.compiler_instructions.insert("section".to_string(), ObjectFormat::_section_ci);
         me.compiler_instructions.insert("define".to_string(), ObjectFormat::_define_ci);
         me.compiler_instructions.insert("db".to_string(), ObjectFormat::_db_ci);
+        me.compiler_instructions.insert("resb".to_string(), ObjectFormat::_resb_ci);
 
         me
     }
@@ -751,6 +790,7 @@ version! It may not be compatible!");
 
     fn process_instruction(&mut self, name: &str, children: &Vec<ParserNode>) -> Result<(), String> {
         let registers = Registers::new();
+        let conditions = Conditions::new();
 
         let instructions = Instructions::new();
         let opcode = match instructions.get_opcode(name) {
@@ -772,6 +812,9 @@ version! It may not be compatible!");
             constants: Vec::new()
         };
 
+        // XXX: Maybe refactor at some point
+        // Idk when
+
         // Welcome to the hellhole
         // This is a stupid piece of code
         // And yes, I don't want to change it
@@ -791,18 +834,18 @@ version! It may not be compatible!");
 
         for i in 0..children.len() {
             let arg = &children[i];
-            let exparg = instruction.args[i];
+            let expected_argument = instruction.args[i];
             match &arg.node_type { // TODO: Implement expressions
-                NodeType::Identifier(name) => {
-                    if self.defines.contains_key(name) {
-                        let def = &self.defines[name];
+                NodeType::Identifier(identifier_name) => {
+                    if self.defines.contains_key(identifier_name) {
+                        let define_symbol = &self.defines[identifier_name];
 
-                        match exparg {
+                        match expected_argument {
                             ArgumentTypes::FloatingPoint |
                             ArgumentTypes::AbsPointer |
                             ArgumentTypes::RelPointer |
                             ArgumentTypes::Immediate32 => {
-                                match &def.node.node_type {
+                                match &define_symbol.node.node_type {
                                     NodeType::ConstInteger(n) => {
                                         instr.constants.push(Constant { 
                                             argument_pos: i as u8, 
@@ -817,11 +860,11 @@ version! It may not be compatible!");
                                             value: (*n).to_bits() as i64
                                         });
                                     }
-                                    _ => unexpected_node!(def.node)
+                                    _ => unexpected_node!(define_symbol.node)
                                 }
                             }
                             ArgumentTypes::Immediate16 => {
-                                match &def.node.node_type {
+                                match &define_symbol.node.node_type {
                                     NodeType::ConstInteger(n) => {
                                         instr.constants.push(Constant { 
                                             argument_pos: i as u8, 
@@ -829,11 +872,11 @@ version! It may not be compatible!");
                                             value: *n & 0xFFFF
                                         });
                                     }
-                                    _ => unexpected_node!(def.node)
+                                    _ => unexpected_node!(define_symbol.node)
                                 }
                             }
                             ArgumentTypes::Immediate8 => {
-                                match &def.node.node_type {
+                                match &define_symbol.node.node_type {
                                     NodeType::ConstInteger(n) => {
                                         instr.constants.push(Constant { 
                                             argument_pos: i as u8, 
@@ -841,20 +884,35 @@ version! It may not be compatible!");
                                             value: *n & 0xFF
                                         });
                                     }
-                                    _ => unexpected_node!(def.node)
+                                    _ => unexpected_node!(define_symbol.node)
                                 }
                             }
-                            _ => unexpected_node!(def.node)
+                            _ => unexpected_node!(define_symbol.node)
                         }
                     } else {
-                        instr.references.push(Reference {
-                            argument_pos: i as u8,
-                            rf: name.clone()
-                        })
+                        match expected_argument {
+                            ArgumentTypes::Condition => {
+                                let cond = match conditions.get_condition(identifier_name) {
+                                    Some(c) => {c},
+                                    None => unexpected_node!(arg)
+                                };
+                                instr.constants.push(Constant {
+                                    argument_pos: i as u8,
+                                    size: ConstantSize::Byte,
+                                    value: *cond as i64
+                                });
+                            }
+                            _ => {
+                                instr.references.push(Reference {
+                                    argument_pos: i as u8,
+                                    rf: identifier_name.clone()
+                                })
+                            }
+                        }
                     }
                 }
                 NodeType::ConstFloat(n) => {
-                    match exparg {
+                    match expected_argument {
                         ArgumentTypes::FloatingPoint |
                         ArgumentTypes::Immediate32 => {
                             instr.constants.push(Constant {
@@ -867,7 +925,7 @@ version! It may not be compatible!");
                     }
                 }
                 NodeType::ConstInteger(n) => {
-                    match exparg {
+                    match expected_argument {
                         ArgumentTypes::AbsPointer |
                         ArgumentTypes::RelPointer |
                         ArgumentTypes::Immediate32 => {
@@ -895,7 +953,7 @@ version! It may not be compatible!");
                     }
                 }
                 NodeType::Register(name) => {
-                    match exparg {
+                    match expected_argument {
                         ArgumentTypes::Register16 |
                         ArgumentTypes::Register32 |
                         ArgumentTypes::Register8 => {
