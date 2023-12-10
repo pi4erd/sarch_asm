@@ -1,6 +1,5 @@
 pub mod lexer;
 pub mod parser;
-pub mod preprocessor;
 pub mod symbols;
 pub mod objgen;
 pub mod linker;
