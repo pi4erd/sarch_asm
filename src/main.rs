@@ -12,9 +12,10 @@ use crate::{objgen::ObjectFormat, linker::Linker};
 use std::{fs, env::args, process::ExitCode};
 
 const VERSION: &'static str = "v0.1.0";
+const GITHUB: &'static str = "https://github.com/pi4erd/sarch_asm";
 
-fn print_version(program: &str) {
-    eprintln!("{} version {}", program, VERSION);
+fn print_version() {
+    eprintln!("Sarch32 ASM Version {}\n{}", VERSION, GITHUB);
 }
 
 // TODO: Update with every argument
@@ -78,7 +79,7 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS
             }
             "-v" | "--version" => {
-                print_version(&program);
+                print_version();
                 return ExitCode::SUCCESS
             }
             "-k" | "--keep-object" => {
