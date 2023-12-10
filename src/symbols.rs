@@ -10,6 +10,7 @@ impl Conditions {
     pub fn new() -> Self {
         let mut me = Self { conditions: HashMap::new() };
 
+        // Math flags
         me.conditions.insert("OV", 0);
         me.conditions.insert("CR", 1);
         me.conditions.insert("NG", 2);
@@ -19,6 +20,15 @@ impl Conditions {
         me.conditions.insert("NC", 1 + 32);
         me.conditions.insert("NN", 2 + 32);
         me.conditions.insert("NZ", 3 + 32);
+
+        // Status register flags
+        me.conditions.insert("ILF", 64);
+        me.conditions.insert("HLF", 65);
+        me.conditions.insert("IDF", 66);
+
+        me.conditions.insert("NILF", 64 + 32);
+        me.conditions.insert("NHLF", 65 + 32);
+        me.conditions.insert("NIDF", 66 + 32);
 
         me
     }
