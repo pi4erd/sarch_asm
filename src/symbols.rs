@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-// TODO: Implement conditions
-
 pub struct Conditions {
     conditions: HashMap<&'static str, u8>
 }

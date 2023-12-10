@@ -12,7 +12,7 @@ use crate::{objgen::ObjectFormat, linker::Linker};
 
 use std::{fs, env::args, process::ExitCode};
 
-const VERSION: &'static str = "v0.1.0-dev";
+const VERSION: &'static str = "v0.1.0";
 
 fn print_version(program: &str) {
     eprintln!("{} version {}", program, VERSION);
@@ -20,13 +20,15 @@ fn print_version(program: &str) {
 
 // TODO: Update with every argument
 fn print_usage(program: &str) {
-    eprintln!("Usage: {} <input_file>", program);
-    eprintln!(" -b | --oblect\t\t\tCompile to object without linking");
-    eprintln!(" -c | --link-script <filename>\tSpecify linker script");
-    eprintln!(" -h | --help\t\t\tPrint this menu");
-    eprintln!(" -k | --keep-object\t\tKeep an object file after linking");
-    eprintln!(" -o | --output <filename>\tSpecify output file");
-    eprintln!(" -v | --version\t\t\tPrint current version");
+    eprintln!("\nUsage: {} <input_file>\n", program);
+    eprintln!("\t-b | --oblect\t\t\tCompile to object without linking");
+    eprintln!("\t-c | --link-script <filename>\tSpecify linker script");
+    eprintln!("\t-h | --help\t\t\tPrint this menu");
+    eprintln!("\t-k | --keep-object\t\tKeep an object file after linking");
+    eprintln!("\t-o | --output <filename>\tSpecify output file");
+    eprintln!("\t-v | --version\t\t\tPrint current version");
+    eprintln!("\t-l | --link-object\t\tAdds object file to a linker");
+    eprintln!("\t     --link\t\t\tTreat input file as SAO and link it");
 }
 
 fn main() -> ExitCode {
