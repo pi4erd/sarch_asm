@@ -20,6 +20,7 @@ macro_rules! unwrap_from_option {
     }
 }
 
+// TODO: Split registers into 32, 16 and 8 bit registers for the better life
 pub struct Registers<'a> {
     registers: HashMap<&'a str, u8>
 }

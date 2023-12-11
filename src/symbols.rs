@@ -121,6 +121,20 @@ impl Instructions {
         me.ilist.insert("isub", Instruction { name: "isub", opcode: 22, args: vec![ArgumentTypes::Immediate32, ArgumentTypes::Register32] });
         me.ilist.insert("msub", Instruction { name: "msub", opcode: 23, args: vec![ArgumentTypes::AbsPointer, ArgumentTypes::Register32] });
 
+        me.ilist.insert("rsub", Instruction { name: "rsub", opcode: 24, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register32] });
+        me.ilist.insert("ngi", Instruction { name: "ngi", opcode: 25, args: vec![ArgumentTypes::Register32] });
+        me.ilist.insert("rmulsd", Instruction { name: "rmulsd", opcode: 26, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register32] });
+        me.ilist.insert("rdivsd", Instruction { name: "rdivsd", opcode: 27, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register32] });
+        me.ilist.insert("rmulud", Instruction { name: "rmulud", opcode: 28, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register32] });
+        me.ilist.insert("rdivud", Instruction { name: "rdivud", opcode: 29, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register32] });
+
+        me.ilist.insert("imulsd", Instruction { name: "imulsd", opcode: 30, args: vec![ArgumentTypes::Immediate32, ArgumentTypes::Register32] });
+        me.ilist.insert("idivsd", Instruction { name: "idivsd", opcode: 31, args: vec![ArgumentTypes::Immediate32, ArgumentTypes::Register32] });
+        me.ilist.insert("imulud", Instruction { name: "imulud", opcode: 32, args: vec![ArgumentTypes::Immediate32, ArgumentTypes::Register32] });
+        me.ilist.insert("idivud", Instruction { name: "idivud", opcode: 33, args: vec![ArgumentTypes::Immediate32, ArgumentTypes::Register32] });
+        me.ilist.insert("cvsdf", Instruction { name: "cvsdf", opcode: 34, args: vec![ArgumentTypes::Register32] });
+        me.ilist.insert("cvfsd", Instruction { name: "cvfsd", opcode: 35, args: vec![ArgumentTypes::Register32] });
+
         me
     }
     pub fn get_opcode(&self, name: &str) -> Option<u16> {
