@@ -107,6 +107,20 @@ impl Instructions {
         me.ilist.insert("jpc", Instruction { name: "jpc", opcode: 10, args: vec![ArgumentTypes::AbsPointer, ArgumentTypes::Condition] });
         me.ilist.insert("call", Instruction { name: "call", opcode: 11, args: vec![ArgumentTypes::AbsPointer] });
 
+        me.ilist.insert("jpr", Instruction { name: "jpr", opcode: 12, args: vec![ArgumentTypes::RelPointer] });
+        me.ilist.insert("jrc", Instruction { name: "jrc", opcode: 13, args: vec![ArgumentTypes::RelPointer, ArgumentTypes::Condition] });
+        me.ilist.insert("callr", Instruction { name: "callr", opcode: 14, args: vec![ArgumentTypes::RelPointer] });
+        me.ilist.insert("push", Instruction { name: "push", opcode: 15, args: vec![ArgumentTypes::Register32] });
+        me.ilist.insert("pop", Instruction { name: "pop", opcode: 16, args: vec![ArgumentTypes::Register32] });
+        me.ilist.insert("ret", Instruction { name: "ret", opcode: 17, args: vec![] });
+
+        me.ilist.insert("movrd", Instruction { name: "movrd", opcode: 18, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register32] });
+        me.ilist.insert("movrw", Instruction { name: "movrw", opcode: 19, args: vec![ArgumentTypes::Register16, ArgumentTypes::Register16] });
+        me.ilist.insert("movrb", Instruction { name: "movrb", opcode: 20, args: vec![ArgumentTypes::Register8, ArgumentTypes::Register8] });
+        me.ilist.insert("int", Instruction { name: "int", opcode: 21, args: vec![ArgumentTypes::Immediate8] });
+        me.ilist.insert("isub", Instruction { name: "isub", opcode: 22, args: vec![ArgumentTypes::Immediate32, ArgumentTypes::Register32] });
+        me.ilist.insert("msub", Instruction { name: "msub", opcode: 23, args: vec![ArgumentTypes::AbsPointer, ArgumentTypes::Register32] });
+
         me
     }
     pub fn get_opcode(&self, name: &str) -> Option<u16> {

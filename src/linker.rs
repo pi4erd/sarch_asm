@@ -1,4 +1,4 @@
-use crate::{objgen::{ObjectFormat, SectionData, InstructionData}, symbols::Instructions};
+use crate::{objgen::{ObjectFormat, SectionData, InstructionData}, symbols::{Instructions, ArgumentTypes}};
 use std::{fs, io::{Write, Read}, collections::HashMap};
 use byteorder::{LittleEndian, WriteBytesExt};
 use serde::{Serialize, Deserialize};
@@ -175,6 +175,8 @@ impl Linker {
         // Unwrap, because we assume valid section data from object files
         let instr_symbol = instructions.get_instruction(instruction.opcode).unwrap();
 
+        let start_position = binary.len() as i64;
+
         let mut bin = Vec::<u8>::new();
 
         // Write opcode
@@ -231,22 +233,37 @@ impl Linker {
         // Please help me. I would appreciate any direction anyone is willing to give me.
 
         // Why do i have to borrow a ZERO?
-        if let Some(arg) = resolved_references.get(&0) {
+        if let Some(arg) = resolved_references.get_mut(&0) {
+            let sym_arg = instr_symbol.args[0];
+            match sym_arg {
+                // Calculate relative offset
+                ArgumentTypes::RelPointer => {
+                    arg.value = arg.value - start_position;
+                }
+                _ => {}
+            }
             match arg.size {
                 // FIXME: UNWRAPS
-                1 => bin.write_u8(arg.value as u8).unwrap(),
-                2 => bin.write_u16::<LittleEndian>(arg.value as u16).unwrap(),
-                4 => bin.write_u32::<LittleEndian>(arg.value as u32).unwrap(),
+                1 => bin.write_i8(arg.value as i8).unwrap(),
+                2 => bin.write_i16::<LittleEndian>(arg.value as i16).unwrap(),
+                4 => bin.write_i32::<LittleEndian>(arg.value as i32).unwrap(),
                 _ => return Err(format!("How did we get here?"))
             }
         }
         // instructions are packed, and not aligned, so it should be fine to do this, right?
-        if let Some(arg) = resolved_references.get(&1) {
+        if let Some(arg) = resolved_references.get_mut(&1) {
+            let sym_arg = instr_symbol.args[1];
+            match sym_arg {
+                ArgumentTypes::RelPointer => {
+                    arg.value = arg.value - start_position;
+                }
+                _ => {}
+            }
             match arg.size {
                 // FIXME: UNWRAPS
-                1 => bin.write_u8(arg.value as u8).unwrap(),
-                2 => bin.write_u16::<LittleEndian>(arg.value as u16).unwrap(),
-                4 => bin.write_u32::<LittleEndian>(arg.value as u32).unwrap(),
+                1 => bin.write_i8(arg.value as i8).unwrap(),
+                2 => bin.write_i16::<LittleEndian>(arg.value as i16).unwrap(),
+                4 => bin.write_i32::<LittleEndian>(arg.value as i32).unwrap(),
                 _ => return Err(format!("How did we get here?"))
             }
         }
