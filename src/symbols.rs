@@ -157,6 +157,10 @@ impl Instructions {
         me.ilist.insert("stptrd", Instruction { name: "stptrd", opcode: 49, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register32] });
         me.ilist.insert("stptrb", Instruction { name: "stptrb", opcode: 50, args: vec![ArgumentTypes::Register8, ArgumentTypes::Register32] });
         me.ilist.insert("stptrw", Instruction { name: "stptrw", opcode: 51, args: vec![ArgumentTypes::Register16, ArgumentTypes::Register32] });
+        me.ilist.insert("stmd", Instruction { name: "stmd", opcode: 52, args: vec![ArgumentTypes::AbsPointer, ArgumentTypes::Register32] });
+        me.ilist.insert("stmb", Instruction { name: "stmb", opcode: 53, args: vec![ArgumentTypes::AbsPointer, ArgumentTypes::Register8] });
+        
+        me.ilist.insert("stmw", Instruction { name: "stmw", opcode: 54, args: vec![ArgumentTypes::AbsPointer, ArgumentTypes::Register16] });
 
         me
     }
