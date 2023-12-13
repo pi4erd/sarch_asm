@@ -780,7 +780,7 @@ version! It may not be compatible!");
         instr(self, children)
     }
 
-    fn process_instruction(&mut self, name: &str, children: &Vec<ParserNode>) -> Result<(), String> {
+    fn process_instruction(&mut self, name: &str, children: &Vec<ParserNode>, current_label: &str) -> Result<(), String> {
         let registers = Registers::new();
         let conditions = Conditions::new();
 
@@ -897,11 +897,11 @@ version! It may not be compatible!");
                             _ => {
                                 let mut identifier = identifier_name.clone();
                                 if identifier.starts_with('@') {
-                                    //identifier = 
+                                    identifier = current_label.to_string() + &identifier;
                                 }
                                 instr.references.push(Reference {
                                     argument_pos: i as u8,
-                                    rf: identifier_name.clone()
+                                    rf: identifier
                                 })
                             }
                         }
@@ -934,14 +934,14 @@ version! It may not be compatible!");
                         ArgumentTypes::Immediate16 => {
                             instr.constants.push(Constant {
                                 argument_pos: i as u8,
-                                size: ConstantSize::DoubleWord,
+                                size: ConstantSize::Word,
                                 value: (*n & 0xFFFF) as i64
                             });
                         }
                         ArgumentTypes::Immediate8 => {
                             instr.constants.push(Constant {
                                 argument_pos: i as u8,
-                                size: ConstantSize::DoubleWord,
+                                size: ConstantSize::Byte,
                                 value: (*n & 0xFF) as i64
                             });
                         }
@@ -990,6 +990,8 @@ version! It may not be compatible!");
             return Err(format!("Cannot load not Program node into objgen"))
         }
 
+        let mut current_label = String::new();
+
         for child in node.children.iter() {
             match &child.node_type {
                 NodeType::CompilerInstruction(instr) => {
@@ -1001,7 +1003,7 @@ version! It may not be compatible!");
                     }
                 }
                 NodeType::Instruction(instr) => {
-                    match self.process_instruction(instr, &child.children) {
+                    match self.process_instruction(instr, &child.children, &current_label) {
                         Ok(_) => {},
                         Err(e) => {
                             return Err(format!("Error while processing instruction: {}", e))
@@ -1036,6 +1038,7 @@ version! It may not be compatible!");
                     };
                     
                     current_section.labels.insert(name.clone(), label);
+                    current_label = name.clone();
                 }
                 _ => unexpected_node!(child)
             }

@@ -11,7 +11,7 @@ use crate::{objgen::ObjectFormat, linker::Linker};
 
 use std::{fs, env::args, process::ExitCode};
 
-const VERSION: &'static str = "v0.1.4";
+const VERSION: &'static str = "v0.1.4-1";
 const GITHUB: &'static str = "https://github.com/pi4erd/sarch_asm";
 
 fn print_version() {
@@ -41,7 +41,7 @@ fn main() -> ExitCode {
     let mut args: std::env::Args = args();
 
     // Inputs #####
-    let mut input_file = "bios.s".to_string();//String::new();
+    let mut input_file = String::new();
     let mut output_file = "output.bin".to_string();
     let mut linker_script: Option<&str> = None;
     let mut lib_files = Vec::<String>::new();
