@@ -140,7 +140,7 @@ impl Instructions {
         me.ilist.insert("cvfsd", Instruction { name: "cvfsd", opcode: 35, args: vec![ArgumentTypes::Register32] });
 
         me.ilist.insert("icmpsd", Instruction { name: "icmpsd", opcode: 36, args: vec![ArgumentTypes::Immediate32, ArgumentTypes::Register32] });
-        me.ilist.insert("icmdud", Instruction { name: "icmdud", opcode: 37, args: vec![ArgumentTypes::Immediate32, ArgumentTypes::Register32] });
+        me.ilist.insert("icmpud", Instruction { name: "icmpud", opcode: 37, args: vec![ArgumentTypes::Immediate32, ArgumentTypes::Register32] });
         me.ilist.insert("icmpub", Instruction { name: "icmpub", opcode: 38, args: vec![ArgumentTypes::Immediate8, ArgumentTypes::Register8] });
         me.ilist.insert("icmpuw", Instruction { name: "icmpuw", opcode: 39, args: vec![ArgumentTypes::Immediate16, ArgumentTypes::Register16] });
         me.ilist.insert("rcmpsd", Instruction { name: "rcmpsd", opcode: 40, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register32] });

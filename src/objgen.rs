@@ -86,7 +86,7 @@ pub enum ConstantSize {
 }
 
 impl ConstantSize {
-    fn from_u8(n: u8) -> Option<Self> {
+    pub fn from_u8(n: u8) -> Option<Self> {
         match n {
             1 => Some(ConstantSize::Byte),
             2 => Some(ConstantSize::Word),
@@ -209,24 +209,16 @@ impl InstructionData {
         Ok(me)
     }
     fn write_bytes(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
-        let mut for_debug: Vec<u8> = Vec::new();
-
         binary.write_u16::<LittleEndian>(self.opcode)?;
         binary.write_u8(self.references.len() as u8)?;
         binary.write_u8(self.constants.len() as u8)?;
-
-        for_debug.write_u16::<LittleEndian>(self.opcode)?;
-        for_debug.write_u8(self.references.len() as u8)?;
-        for_debug.write_u8(self.constants.len() as u8)?;
         
         for rf in self.references.iter() {
             rf.write_bytes(binary)?;
-            rf.write_bytes(&mut for_debug)?;
         }
 
         for cst in self.constants.iter() {
             cst.write_bytes(binary)?;
-            cst.write_bytes(&mut for_debug)?;
         }
 
         Ok(())
@@ -903,6 +895,10 @@ version! It may not be compatible!");
                                 });
                             }
                             _ => {
+                                let mut identifier = identifier_name.clone();
+                                if identifier.starts_with('@') {
+                                    //identifier = 
+                                }
                                 instr.references.push(Reference {
                                     argument_pos: i as u8,
                                     rf: identifier_name.clone()

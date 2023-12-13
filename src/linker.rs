@@ -1,4 +1,4 @@
-use crate::{objgen::{ObjectFormat, SectionData, InstructionData}, symbols::{Instructions, ArgumentTypes}};
+use crate::{objgen::{ObjectFormat, SectionData, InstructionData, ConstantSize}, symbols::{Instructions, ArgumentTypes}};
 use std::{fs, io::{Write, Read}, collections::HashMap};
 use byteorder::{LittleEndian, WriteBytesExt};
 use serde::{Serialize, Deserialize};
@@ -98,7 +98,7 @@ impl LinkStructure {
 }
 
 struct ResolvedReference {
-    size: usize,
+    size: ConstantSize,
     value: i64
 }
 
@@ -217,14 +217,15 @@ impl Linker {
 
             let arg_size = instr_symbol.args[reference.argument_pos as usize].get_size();
 
+            // FIXME: Unwraps
             resolved_references.insert(reference.argument_pos, ResolvedReference { 
-                size: arg_size, value: offset as i64 
+                size: ConstantSize::from_u8(arg_size as u8).unwrap(), value: offset as i64 
             });
         }
 
         for constant in instruction.constants.iter() {
             resolved_references.insert(constant.argument_pos, ResolvedReference {
-                size: constant.size.get_size(), value: constant.value
+                size: constant.size, value: constant.value
             });
         }
         
@@ -244,10 +245,9 @@ impl Linker {
             }
             match arg.size {
                 // FIXME: UNWRAPS
-                1 => bin.write_i8(arg.value as i8).unwrap(),
-                2 => bin.write_i16::<LittleEndian>(arg.value as i16).unwrap(),
-                4 => bin.write_i32::<LittleEndian>(arg.value as i32).unwrap(),
-                _ => return Err(format!("How did we get here?"))
+                ConstantSize::Byte => bin.write_i8(arg.value as i8).unwrap(),
+                ConstantSize::Word => bin.write_i16::<LittleEndian>(arg.value as i16).unwrap(),
+                ConstantSize::DoubleWord => bin.write_i32::<LittleEndian>(arg.value as i32).unwrap()
             }
         }
         // instructions are packed, and not aligned, so it should be fine to do this, right?
@@ -261,10 +261,9 @@ impl Linker {
             }
             match arg.size {
                 // FIXME: UNWRAPS
-                1 => bin.write_i8(arg.value as i8).unwrap(),
-                2 => bin.write_i16::<LittleEndian>(arg.value as i16).unwrap(),
-                4 => bin.write_i32::<LittleEndian>(arg.value as i32).unwrap(),
-                _ => return Err(format!("How did we get here?"))
+                ConstantSize::Byte => bin.write_i8(arg.value as i8).unwrap(),
+                ConstantSize::Word => bin.write_i16::<LittleEndian>(arg.value as i16).unwrap(),
+                ConstantSize::DoubleWord => bin.write_i32::<LittleEndian>(arg.value as i32).unwrap()
             }
         }
 
