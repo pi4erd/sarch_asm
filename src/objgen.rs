@@ -327,6 +327,7 @@ impl SectionData {
                     return Err(format!("Cannot merge two binary sections with similar labels!"))
                 }
                 label.ptr_instr += old_instr_length;
+                self.labels.insert(label_name, label);
             }
         }
 
@@ -898,6 +899,8 @@ version! It may not be compatible!");
                                 let mut identifier = identifier_name.clone();
                                 if identifier.starts_with('@') {
                                     identifier = current_label.to_string() + &identifier;
+                                } else if identifier == "@" {
+                                    identifier = current_label.to_string();
                                 }
                                 instr.references.push(Reference {
                                     argument_pos: i as u8,
@@ -1038,7 +1041,11 @@ version! It may not be compatible!");
                     };
                     
                     current_section.labels.insert(name.clone(), label);
-                    current_label = name.clone();
+                    
+                    if !name.contains('@') {
+                        // FIXME: This is the easiest fix i can think about now
+                        current_label = name.clone();
+                    }
                 }
                 _ => unexpected_node!(child)
             }
