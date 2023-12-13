@@ -13,11 +13,15 @@ impl Conditions {
         me.conditions.insert("CR", 1);
         me.conditions.insert("NG", 2);
         me.conditions.insert("ZR", 3);
+        me.conditions.insert("GTR", 4);
+        me.conditions.insert("LES", 5);
 
         me.conditions.insert("NV", 0 + 32);
         me.conditions.insert("NC", 1 + 32);
         me.conditions.insert("NN", 2 + 32);
         me.conditions.insert("NZ", 3 + 32);
+        me.conditions.insert("NGT", 4 + 32);
+        me.conditions.insert("NLS", 5 + 32);
 
         // Status register flags
         me.conditions.insert("ILF", 64);
@@ -134,6 +138,25 @@ impl Instructions {
         me.ilist.insert("idivud", Instruction { name: "idivud", opcode: 33, args: vec![ArgumentTypes::Immediate32, ArgumentTypes::Register32] });
         me.ilist.insert("cvsdf", Instruction { name: "cvsdf", opcode: 34, args: vec![ArgumentTypes::Register32] });
         me.ilist.insert("cvfsd", Instruction { name: "cvfsd", opcode: 35, args: vec![ArgumentTypes::Register32] });
+
+        me.ilist.insert("icmpsd", Instruction { name: "icmpsd", opcode: 36, args: vec![ArgumentTypes::Immediate32, ArgumentTypes::Register32] });
+        me.ilist.insert("icmdud", Instruction { name: "icmdud", opcode: 37, args: vec![ArgumentTypes::Immediate32, ArgumentTypes::Register32] });
+        me.ilist.insert("icmpub", Instruction { name: "icmpub", opcode: 38, args: vec![ArgumentTypes::Immediate8, ArgumentTypes::Register8] });
+        me.ilist.insert("icmpuw", Instruction { name: "icmpuw", opcode: 39, args: vec![ArgumentTypes::Immediate16, ArgumentTypes::Register16] });
+        me.ilist.insert("rcmpsd", Instruction { name: "rcmpsd", opcode: 40, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register32] });
+        me.ilist.insert("rcmpud", Instruction { name: "rcmpud", opcode: 41, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register32] });
+
+        me.ilist.insert("rcmpub", Instruction { name: "rcmpub", opcode: 42, args: vec![ArgumentTypes::Register8, ArgumentTypes::Register8] });
+        me.ilist.insert("rcmpuw", Instruction { name: "rcmpuw", opcode: 43, args: vec![ArgumentTypes::Register16, ArgumentTypes::Register16] });
+        me.ilist.insert("dsin", Instruction { name: "dsin", opcode: 44, args: vec![] });
+        me.ilist.insert("esin", Instruction { name: "icmesinpuw", opcode: 45, args: vec![] });
+        me.ilist.insert("ldptrd", Instruction { name: "ldptrd", opcode: 46, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register32] });
+        me.ilist.insert("ldptrb", Instruction { name: "ldptrb", opcode: 47, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register8] });
+
+        me.ilist.insert("ldptrw", Instruction { name: "ldptrw", opcode: 48, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register16] });
+        me.ilist.insert("stptrd", Instruction { name: "stptrd", opcode: 49, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register32] });
+        me.ilist.insert("stptrb", Instruction { name: "stptrb", opcode: 50, args: vec![ArgumentTypes::Register8, ArgumentTypes::Register32] });
+        me.ilist.insert("stptrw", Instruction { name: "stptrw", opcode: 51, args: vec![ArgumentTypes::Register16, ArgumentTypes::Register32] });
 
         me
     }
