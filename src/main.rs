@@ -220,6 +220,23 @@ fn main() -> ExitCode {
             }
         };
         
+        for lib in lib_files {
+            let lib_fmt = match ObjectFormat::from_file(&lib) {
+                Ok(l) => l,
+                Err(e) => {
+                    eprintln!("Error occured while reading library object: {e}");
+                    return ExitCode::FAILURE
+                }
+            };
+            match linker.load_symbols(lib_fmt) {
+                Ok(_) => {},
+                Err(e) => {
+                    eprintln!("Error occured while loading a library in linker: {e}");
+                    return ExitCode::FAILURE
+                }
+            };
+        }
+
         match linker.save_binary(&output_file, linker_script) {
             Ok(_) => {},
             Err(e) => {

@@ -321,6 +321,8 @@ impl Linker {
     }
 
     pub fn save_binary(&mut self, path: &str, ls_path: Option<&str>) -> Result<(), String> {
+        println!("Loaded symbols: {:#?}", self.section_symbols);
+
         let bin = self.generate_binary(ls_path)?;
 
         let mut file = match fs::File::create(path) {
