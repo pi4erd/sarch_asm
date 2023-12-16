@@ -3,8 +3,10 @@ pub mod parser;
 pub mod symbols;
 pub mod objgen;
 pub mod linker;
+pub mod objdump;
 
 use lexer::AsmLexer;
+use objdump::Objdump;
 use parser::Parser;
 
 use crate::{objgen::ObjectFormat, linker::Linker};
@@ -23,6 +25,7 @@ fn print_usage(program: &str) {
     eprintln!("\nUsage: {} <input_file>\n", program);
     eprintln!("\t-b | --oblect\t\t\tCompile to object without linking");
     eprintln!("\t-c | --link-script <filename>\tSpecify linker script");
+    eprintln!("\t-d | --disassemble\t\tToggle disassembly for an object file");
     eprintln!("\t-h | --help\t\t\tPrint this menu");
     eprintln!("\t-k | --keep-object\t\tKeep an object file after linking");
     eprintln!("\t-o | --output <filename>\tSpecify output file");
@@ -49,6 +52,7 @@ fn main() -> ExitCode {
     let mut link_object = true;
     let mut input_is_object = false;
     let mut keep_object = false;
+    let mut disassemble = false;
     // ############
 
     let mut linker_script_filename: String;
@@ -105,6 +109,10 @@ fn main() -> ExitCode {
                     }
                 };
                 linker_script = Some(&linker_script_filename);
+            }
+            "-d" | "--disassemble" => {
+                disassemble = true;
+                input_is_object = true;
             }
             "-l" | "--link-object" => {
                 // Adds object file to the linker
@@ -185,7 +193,8 @@ fn main() -> ExitCode {
         if print_object_tree {
             println!("Object tree: {:#?}", objgenerator);
         }
-    } else {
+    }
+    else {
         objgenerator = match ObjectFormat::from_file(&input_file) {
             Ok(k) => k,
             Err(e) => {
@@ -193,6 +202,21 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE
             }
         };
+    }
+
+    if disassemble {
+        let dumper = Objdump::new(objgenerator);
+        match dumper.get_disassembly() {
+            Ok(s) => {
+                println!("Disassembly for '{}':\n", input_file);
+                println!("{}", s);
+            }
+            Err(e) => {
+                eprintln!("Error occured while disassembling file: {e}");
+                return ExitCode::FAILURE
+            }
+        }
+        return ExitCode::SUCCESS;
     }
 
     if keep_object {

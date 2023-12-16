@@ -223,6 +223,33 @@ impl InstructionData {
 
         Ok(())
     }
+    pub fn get_args(&self) -> String {
+        let mut result = String::new();
+        
+        let mut consts = self.constants.iter();
+        let mut refs = self.references.iter();
+
+        let argc = consts.len() + refs.len();
+
+        for i in 0..argc {
+            match refs.find(|r| r.argument_pos == (i as u8)) {
+                Some(r) => {
+                    result += &format!("{} ", r.rf);
+                    continue
+                },
+                None => {}
+            }
+            match consts.find(|c| c.argument_pos == (i as u8)) {
+                Some(c) => {
+                    result += &format!("{:#04x} ({:?}) ", c.value, c.size);
+                    continue
+                }
+                None => {}
+            }
+        }
+
+        result
+    }
 }
 
 /**
@@ -233,7 +260,7 @@ impl InstructionData {
 #[derive(Debug, Clone)]
 pub struct ObjectLabelSymbol {
     name: String,
-    ptr_instr: u64,
+    pub ptr_instr: u64,
     ptr_binary: u64,
 }
 
