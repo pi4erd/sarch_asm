@@ -661,6 +661,38 @@ impl ObjectFormat {
 
         Ok(())
     }
+    // Reads binary data from file and inserts it as binary data into section
+    fn _data_ci(&mut self, children: &Vec<ParserNode>) -> Result<(), String> {
+        let sec = match self.sections.get_mut(&self.current_section) {
+            Some(s) => s,
+            None => {
+                return Err(format!("Section '{}' not found! Maybe compiler bug?", self.current_section))
+            }
+        };
+
+        if !sec.binary_section || sec.instructions.len() != 0 {
+            return Err(format!("Trying to add binary into section with instructions!"))
+        }
+
+        let child_node = match children.get(0) { 
+            Some(c) => c,
+            None => unexpected_eof!("DATA instruction requires 1 argument, 0 provided")
+        };
+
+        if let NodeType::String(path) = &child_node.node_type {
+            let mut data = match fs::read(path) {
+                Ok(d) => d,
+                Err(e) => {
+                    return Err(format!("Error occured while reading file: {e}"))
+                }
+            };
+            sec.binary_data.append(&mut data);
+        } else {
+            return Err(format!("DATA instruction takes String. {:?} provided", child_node.node_type))
+        }
+
+        Ok(())
+    }
     // End compiler instructions
 
     pub fn new() -> Self {
@@ -682,6 +714,7 @@ impl ObjectFormat {
         me.compiler_instructions.insert("define".to_string(), ObjectFormat::_define_ci);
         me.compiler_instructions.insert("db".to_string(), ObjectFormat::_db_ci);
         me.compiler_instructions.insert("resb".to_string(), ObjectFormat::_resb_ci);
+        me.compiler_instructions.insert("data".to_string(), ObjectFormat::_data_ci);
 
         me
     }
