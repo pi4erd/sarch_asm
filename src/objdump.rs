@@ -20,10 +20,12 @@ impl Objdump {
 
             result += &format!("Section '{}':\n", sec_name);
 
+            let mut offset = 0;
+
             for (i, instruction) in sec.instructions.iter().enumerate() {
                 match sec.labels.iter().find(|(_, l)| l.ptr_instr == (i as u64)) {
                     Some((l_name, _)) => {
-                        result += &format!("\n  <'{}'>:\n", l_name);
+                        result += &format!("\n  <'{}'> {:#06x}:\n", l_name, offset);
                     }
                     None => {}
                 };
@@ -33,14 +35,16 @@ impl Objdump {
                         return Err(format!("No instruction with opcode '{}' exists!", instruction.opcode))
                     }
                 };
-                result += &format!("\t{:#04x}: {} ", instruction.opcode, sym.name);
+                result += &format!("\t{:#06x} ({:#04x}): {} ", offset, instruction.opcode, sym.name);
 
                 result += &instruction.get_args();
 
                 result += "\n";
 
+                offset += sym.get_size();
+
                 // final format:
-                //      opc: nam a0 a1 \n
+                //      loc (opc): nam a0 a1 \n
             }
         }
 
