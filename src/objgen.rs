@@ -751,6 +751,82 @@ impl ObjectFormat {
 
         Ok(())
     }
+    // Define double word, same as db but for dw
+    fn _dd_ci(&mut self, children: &Vec<ParserNode>) -> Result<(), String> {
+        let sec = match self.sections.get_mut(&self.current_section) {
+            Some(s) => s,
+            None => {
+                return Err(format!("Section '{}' not found! Maybe compiler bug?", self.current_section))
+            }
+        };
+
+        if sec.instructions.len() != 0 {
+            return Err(format!("Trying to add binary into section with instructions!"))
+        }
+
+        if children.len() == 0 {
+            return Err(format!("Arguments expected for compiler instruction 'db'"))
+        }
+
+        sec.binary_section = true;
+
+        for child in children {
+            match &child.node_type {
+                NodeType::ConstInteger(num) => {
+                    sec.binary_data.write_i32::<LittleEndian>(*num as i32).unwrap();
+                }
+                NodeType::Negate | NodeType::Expression => {
+                    todo!()
+                }
+                NodeType::String(some_str) => {
+                    for b in some_str.bytes() {
+                        sec.binary_data.write_u32::<LittleEndian>(b as u32).unwrap();
+                    }
+                }
+                _ => unexpected_node!(child)
+            }
+        }
+
+        Ok(())
+    }
+    // Define word, same as db but for w
+    fn _dw_ci(&mut self, children: &Vec<ParserNode>) -> Result<(), String> {
+        let sec = match self.sections.get_mut(&self.current_section) {
+            Some(s) => s,
+            None => {
+                return Err(format!("Section '{}' not found! Maybe compiler bug?", self.current_section))
+            }
+        };
+
+        if sec.instructions.len() != 0 {
+            return Err(format!("Trying to add binary into section with instructions!"))
+        }
+
+        if children.len() == 0 {
+            return Err(format!("Arguments expected for compiler instruction 'db'"))
+        }
+
+        sec.binary_section = true;
+
+        for child in children {
+            match &child.node_type {
+                NodeType::ConstInteger(num) => {
+                    sec.binary_data.write_i16::<LittleEndian>(*num as i16).unwrap();
+                }
+                NodeType::Negate | NodeType::Expression => {
+                    todo!()
+                }
+                NodeType::String(some_str) => {
+                    for b in some_str.bytes() {
+                        sec.binary_data.write_u16::<LittleEndian>(b as u16).unwrap();
+                    }
+                }
+                _ => unexpected_node!(child)
+            }
+        }
+
+        Ok(())
+    }
     // End compiler instructions
 
     pub fn new() -> Self {
@@ -773,6 +849,8 @@ impl ObjectFormat {
         me.compiler_instructions.insert("db".to_string(), ObjectFormat::_db_ci);
         me.compiler_instructions.insert("resb".to_string(), ObjectFormat::_resb_ci);
         me.compiler_instructions.insert("data".to_string(), ObjectFormat::_data_ci);
+        me.compiler_instructions.insert("dd".to_string(), ObjectFormat::_dd_ci);
+        me.compiler_instructions.insert("dw".to_string(), ObjectFormat::_dw_ci);
 
         me
     }
