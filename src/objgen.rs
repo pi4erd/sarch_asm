@@ -223,6 +223,64 @@ impl InstructionData {
 
         Ok(())
     }
+    pub fn get_args(&self) -> String {
+        let instructions = Instructions::new();
+        let registers = Registers::new();
+
+        // FIXME: Unwrap, maybe?
+        let sym = instructions.get_instruction(self.opcode).unwrap();
+
+        let mut result = String::new();
+        
+        let mut consts = self.constants.iter();
+        let mut refs = self.references.iter();
+
+        let argc = consts.len() + refs.len();
+
+        for i in 0..argc {
+            match refs.find(|r| r.argument_pos == (i as u8)) {
+                Some(r) => {
+                    result += &format!("{} ", r.rf);
+                    continue
+                },
+                None => {}
+            }
+            match consts.find(|c| c.argument_pos == (i as u8)) {
+                Some(c) => {
+                    match sym.args[i] {
+                        ArgumentTypes::Register16 => {
+                            let name = match registers.get_name16(c.value as u8) {
+                                Some(s) => s,
+                                None => "(UREG)"
+                            };
+                            result += &format!("{}", name);
+                        }
+                        ArgumentTypes::Register32 => {
+                            let name = match registers.get_name32(c.value as u8) {
+                                Some(s) => s,
+                                None => "(UREG)"
+                            };
+                            result += &format!("{}", name);
+                        }
+                        ArgumentTypes::Register8 => {
+                            let name = match registers.get_name8(c.value as u8) {
+                                Some(s) => s,
+                                None => "(UREG)"
+                            };
+                            result += &format!("{}", name);
+                        }
+                        _ => {
+                            result += &format!("{:#04x} ({:?}) ", c.value, c.size);
+                        }
+                    }
+                    continue
+                }
+                None => {}
+            }
+        }
+
+        result
+    }
 }
 
 /**
@@ -233,7 +291,7 @@ impl InstructionData {
 #[derive(Debug, Clone)]
 pub struct ObjectLabelSymbol {
     name: String,
-    ptr_instr: u64,
+    pub ptr_instr: u64,
     ptr_binary: u64,
 }
 
@@ -986,18 +1044,41 @@ version! It may not be compatible!");
                 }
                 NodeType::Register(name) => {
                     match expected_argument {
-                        ArgumentTypes::Register16 |
-                        ArgumentTypes::Register32 |
+                        ArgumentTypes::Register16 => {
+                            instr.constants.push(Constant {
+                                argument_pos: i as u8,
+                                size: ConstantSize::Byte,
+                                value: match registers.get16(name) {
+                                    Some(r) => *r as i64,
+                                    None => {
+                                        return Err(format!("Invalid 16 bit register \
+                                        name '{}'.", name))
+                                    }
+                                }
+                            });
+                        }
+                        ArgumentTypes::Register32 => {
+                            instr.constants.push(Constant {
+                                argument_pos: i as u8,
+                                size: ConstantSize::Byte,
+                                value: match registers.get32(name) {
+                                    Some(r) => *r as i64,
+                                    None => {
+                                        return Err(format!("Invalid 32 bit register \
+                                        name '{}'.", name))
+                                    }
+                                }
+                            });
+                        }
                         ArgumentTypes::Register8 => {
                             instr.constants.push(Constant {
                                 argument_pos: i as u8,
                                 size: ConstantSize::Byte,
-                                value: match registers.get(name) {
+                                value: match registers.get8(name) {
                                     Some(r) => *r as i64,
                                     None => {
-                                        return Err(format!("Invalid register \
-                                        name '{}'. Maybe compiler error!",
-                                        name))
+                                        return Err(format!("Invalid 8 bit register \
+                                        name '{}'.", name))
                                     }
                                 }
                             });
