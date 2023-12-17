@@ -253,21 +253,21 @@ impl InstructionData {
                                 Some(s) => s,
                                 None => "(UREG)"
                             };
-                            result += &format!("{}", name);
+                            result += &format!("{} ", name);
                         }
                         ArgumentTypes::Register32 => {
                             let name = match registers.get_name32(c.value as u8) {
                                 Some(s) => s,
                                 None => "(UREG)"
                             };
-                            result += &format!("{}", name);
+                            result += &format!("{} ", name);
                         }
                         ArgumentTypes::Register8 => {
                             let name = match registers.get_name8(c.value as u8) {
                                 Some(s) => s,
                                 None => "(UREG)"
                             };
-                            result += &format!("{}", name);
+                            result += &format!("{} ", name);
                         }
                         _ => {
                             result += &format!("{:#04x} ({:?}) ", c.value, c.size);
