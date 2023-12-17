@@ -157,7 +157,12 @@ impl Linker {
         // For every section before this
         for (idx, link_section) in self.link_structure.sections.iter().enumerate() {
             if idx == link_section_index { break }
-            let section = &self.section_symbols[&link_section.name];
+            let section = match self.section_symbols.get(&link_section.name) {
+                Some(s) => s,
+                None => {
+                    return Err(format!("No section '{}' found!", link_section.name))
+                }
+            };
 
             offset += section.get_binary_size() as u64;
         }
