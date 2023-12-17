@@ -22,114 +22,150 @@ macro_rules! unwrap_from_option {
 
 // TODO: Split registers into 32, 16 and 8 bit registers for the better life
 pub struct Registers<'a> {
-    registers: HashMap<&'a str, u8>
+    registers32: HashMap<&'a str, u8>,
+    registers8: HashMap<&'a str, u8>,
+    registers16: HashMap<&'a str, u8>
 }
 
 impl Registers<'_> {
     pub fn new<'a>() -> Self {
-        let mut me = Self { registers: HashMap::new() };
+        let mut me = Self {
+            registers32: HashMap::new(),
+            registers8: HashMap::new(),
+            registers16: HashMap::new(),
+        };
 
         // 32 bit
-        me.registers.insert("r0", 0);
-        me.registers.insert("r1", 1);
-        me.registers.insert("r2", 2);
-        me.registers.insert("r3", 3);
-        me.registers.insert("r4", 4);
-        me.registers.insert("r5", 5);
-        me.registers.insert("r6", 6);
-        me.registers.insert("r7", 7);
-        me.registers.insert("r8", 8);
-        me.registers.insert("r9", 9);
-        me.registers.insert("ra", 10);
-        me.registers.insert("rb", 11);
-        me.registers.insert("rc", 12);
-        me.registers.insert("rd", 13);
-        me.registers.insert("re", 14);
-        me.registers.insert("rf", 15);
-        me.registers.insert("ip", 16);
-        me.registers.insert("sr", 17);
-        me.registers.insert("mfr", 18);
-        me.registers.insert("sp", 19);
-        me.registers.insert("bp", 20);
-        me.registers.insert("tptr", 21);
+        me.registers32.insert("r0", 0);
+        me.registers32.insert("r1", 1);
+        me.registers32.insert("r2", 2);
+        me.registers32.insert("r3", 3);
+        me.registers32.insert("r4", 4);
+        me.registers32.insert("r5", 5);
+        me.registers32.insert("r6", 6);
+        me.registers32.insert("r7", 7);
+        me.registers32.insert("r8", 8);
+        me.registers32.insert("r9", 9);
+        me.registers32.insert("ra", 10);
+        me.registers32.insert("rb", 11);
+        me.registers32.insert("rc", 12);
+        me.registers32.insert("rd", 13);
+        me.registers32.insert("re", 14);
+        me.registers32.insert("rf", 15);
+        me.registers32.insert("ip", 16);
+        me.registers32.insert("sr", 17);
+        me.registers32.insert("mfr", 18);
+        me.registers32.insert("sp", 19);
+        me.registers32.insert("bp", 20);
+        me.registers32.insert("tptr", 21);
 
         // 16 bit
-        me.registers.insert("r00", 0);
-        me.registers.insert("r01", 1);
-        me.registers.insert("r10", 2);
-        me.registers.insert("r11", 3);
-        me.registers.insert("r20", 4);
-        me.registers.insert("r21", 5);
-        me.registers.insert("r30", 6);
-        me.registers.insert("r31", 7);
-        me.registers.insert("r40", 8);
-        me.registers.insert("r41", 9);
-        me.registers.insert("r50", 10);
-        me.registers.insert("r51", 11);
-        me.registers.insert("r60", 12);
-        me.registers.insert("r61", 13);
-        me.registers.insert("r70", 14);
-        me.registers.insert("r71", 15);
-        me.registers.insert("r80", 16);
-        me.registers.insert("r81", 17);
-        me.registers.insert("r90", 18);
-        me.registers.insert("r91", 19);
-        me.registers.insert("ra0", 20);
-        me.registers.insert("ra1", 21);
-        me.registers.insert("rb0", 22);
-        me.registers.insert("rb1", 23);
-        me.registers.insert("rc0", 24);
-        me.registers.insert("rc1", 25);
-        me.registers.insert("rd0", 26);
-        me.registers.insert("rd1", 27);
-        me.registers.insert("re0", 28);
-        me.registers.insert("re1", 29);
-        me.registers.insert("rf0", 30);
-        me.registers.insert("rf1", 31);
+        me.registers16.insert("r00", 0);
+        me.registers16.insert("r01", 1);
+        me.registers16.insert("r10", 2);
+        me.registers16.insert("r11", 3);
+        me.registers16.insert("r20", 4);
+        me.registers16.insert("r21", 5);
+        me.registers16.insert("r30", 6);
+        me.registers16.insert("r31", 7);
+        me.registers16.insert("r40", 8);
+        me.registers16.insert("r41", 9);
+        me.registers16.insert("r50", 10);
+        me.registers16.insert("r51", 11);
+        me.registers16.insert("r60", 12);
+        me.registers16.insert("r61", 13);
+        me.registers16.insert("r70", 14);
+        me.registers16.insert("r71", 15);
+        me.registers16.insert("r80", 16);
+        me.registers16.insert("r81", 17);
+        me.registers16.insert("r90", 18);
+        me.registers16.insert("r91", 19);
+        me.registers16.insert("ra0", 20);
+        me.registers16.insert("ra1", 21);
+        me.registers16.insert("rb0", 22);
+        me.registers16.insert("rb1", 23);
+        me.registers16.insert("rc0", 24);
+        me.registers16.insert("rc1", 25);
+        me.registers16.insert("rd0", 26);
+        me.registers16.insert("rd1", 27);
+        me.registers16.insert("re0", 28);
+        me.registers16.insert("re1", 29);
+        me.registers16.insert("rf0", 30);
+        me.registers16.insert("rf1", 31);
 
         // 8 bit
-        me.registers.insert("r00l", 0);
-        me.registers.insert("r00h", 1);
-        me.registers.insert("r01l", 2);
-        me.registers.insert("r01h", 3);
-        me.registers.insert("r10l", 4);
-        me.registers.insert("r10h", 5);
-        me.registers.insert("r11l", 6);
-        me.registers.insert("r11h", 7);
-        me.registers.insert("r20l", 8);
-        me.registers.insert("r20h", 9);
-        me.registers.insert("r21l", 10);
-        me.registers.insert("r21h", 11);
-        me.registers.insert("r30l", 12);
-        me.registers.insert("r30h", 13);
-        me.registers.insert("r31l", 14);
-        me.registers.insert("r31h", 15);
-        me.registers.insert("r40l", 16);
-        me.registers.insert("r40h", 17);
-        me.registers.insert("r41l", 18);
-        me.registers.insert("r41h", 19);
-        me.registers.insert("r50l", 20);
-        me.registers.insert("r50h", 21);
-        me.registers.insert("r51l", 22);
-        me.registers.insert("r51h", 23);
-        me.registers.insert("r60l", 24);
-        me.registers.insert("r60h", 25);
-        me.registers.insert("r61l", 26);
-        me.registers.insert("r61h", 27);
-        me.registers.insert("r70l", 28);
-        me.registers.insert("r70h", 29);
-        me.registers.insert("r71l", 30);
-        me.registers.insert("r71h", 31);
+        me.registers8.insert("r00l", 0);
+        me.registers8.insert("r00h", 1);
+        me.registers8.insert("r01l", 2);
+        me.registers8.insert("r01h", 3);
+        me.registers8.insert("r10l", 4);
+        me.registers8.insert("r10h", 5);
+        me.registers8.insert("r11l", 6);
+        me.registers8.insert("r11h", 7);
+        me.registers8.insert("r20l", 8);
+        me.registers8.insert("r20h", 9);
+        me.registers8.insert("r21l", 10);
+        me.registers8.insert("r21h", 11);
+        me.registers8.insert("r30l", 12);
+        me.registers8.insert("r30h", 13);
+        me.registers8.insert("r31l", 14);
+        me.registers8.insert("r31h", 15);
+        me.registers8.insert("r40l", 16);
+        me.registers8.insert("r40h", 17);
+        me.registers8.insert("r41l", 18);
+        me.registers8.insert("r41h", 19);
+        me.registers8.insert("r50l", 20);
+        me.registers8.insert("r50h", 21);
+        me.registers8.insert("r51l", 22);
+        me.registers8.insert("r51h", 23);
+        me.registers8.insert("r60l", 24);
+        me.registers8.insert("r60h", 25);
+        me.registers8.insert("r61l", 26);
+        me.registers8.insert("r61h", 27);
+        me.registers8.insert("r70l", 28);
+        me.registers8.insert("r70h", 29);
+        me.registers8.insert("r71l", 30);
+        me.registers8.insert("r71h", 31);
 
         me
     }
 
-    pub fn get<'a>(&'a self, key: &'a str) -> Option<&u8> {
-        self.registers.get(key)
+    pub fn get32<'a>(&'a self, key: &'a str) -> Option<&u8> {
+        self.registers32.get(key)
+    }
+
+    pub fn get16<'a>(&'a self, key: &'a str) -> Option<&u8> {
+        self.registers16.get(key)
+    }
+
+    pub fn get8<'a>(&'a self, key: &'a str) -> Option<&u8> {
+        self.registers8.get(key)
+    }
+
+    pub fn get_name8<'a>(&'a self, idx: u8) -> Option<&str> {
+        match self.registers8.iter().find(|(_, r)| **r == idx) {
+            Some((rn, _)) => Some(rn),
+            None => None
+        }
+    }
+
+    pub fn get_name32<'a>(&'a self, idx: u8) -> Option<&str> {
+        match self.registers32.iter().find(|(_, r)| **r == idx) {
+            Some((rn, _)) => Some(rn),
+            None => None
+        }
+    }
+
+    pub fn get_name16<'a>(&'a self, idx: u8) -> Option<&str> {
+        match self.registers16.iter().find(|(_, r)| **r == idx) {
+            Some((rn, _)) => Some(rn),
+            None => None
+        }
     }
 
     pub fn has_key<'a>(&'a self, key: &'a str) -> bool {
-        self.registers.contains_key(key)
+        self.registers32.contains_key(key) || self.registers16.contains_key(key)
+            || self.registers8.contains_key(key)
     }
 }
 
