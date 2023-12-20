@@ -13,7 +13,7 @@ use crate::{objgen::ObjectFormat, linker::Linker};
 
 use std::{fs, env::args, process::ExitCode};
 
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+const VERSION: &'static str = env!("CARGO_PKG_VERSION", "No crate version is defined in environment variables.");
 const GITHUB: &'static str = "https://github.com/pi4erd/sarch_asm";
 
 fn print_version() {
