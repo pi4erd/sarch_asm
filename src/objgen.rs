@@ -817,6 +817,15 @@ impl ObjectFormat {
 
         for child in children {
             match &child.node_type {
+                NodeType::Identifier(sym_name) => {
+                    sec.binary_data.push(BinaryUnit {
+                        constant: None,
+                        reference: Some(BinaryReference {
+                            size: ConstantSize::Byte,
+                            rf: sym_name.clone()
+                        })
+                    });
+                }
                 NodeType::ConstInteger(num) => {
                     if *num < 256 {
                         sec.binary_data.push(BinaryUnit {
@@ -962,6 +971,15 @@ impl ObjectFormat {
 
         for child in children {
             match &child.node_type {
+                NodeType::Identifier(sym_name) => {
+                    sec.binary_data.push(BinaryUnit {
+                        constant: None,
+                        reference: Some(BinaryReference {
+                            size: ConstantSize::DoubleWord,
+                            rf: sym_name.clone()
+                        })
+                    });
+                }
                 NodeType::ConstInteger(num) => {
                     sec.binary_data.push(BinaryUnit {
                         reference: None,
@@ -1012,6 +1030,15 @@ impl ObjectFormat {
 
         for child in children {
             match &child.node_type {
+                NodeType::Identifier(sym_name) => {
+                    sec.binary_data.push(BinaryUnit {
+                        constant: None,
+                        reference: Some(BinaryReference {
+                            size: ConstantSize::Word,
+                            rf: sym_name.clone()
+                        })
+                    });
+                }
                 NodeType::ConstInteger(num) => {
                     sec.binary_data.push(BinaryUnit {
                         reference: None,
