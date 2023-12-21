@@ -34,7 +34,7 @@ macro_rules! unexpected_eof {
 }
 
 const MAGIC_FORMAT_NUMBER: u64 = 0x3A6863FC6173371B;
-const CURRENT_FORMAT_VERSION: u32 = 3;
+const CURRENT_FORMAT_VERSION: u32 = 4;
 
 /**
  * 0 - 1: argument position
@@ -284,27 +284,23 @@ impl InstructionData {
 }
 
 /**
- * 0 - 8: ptr instr
- * 8 - 16: ptr bin
- * 16 - <>: name
+ * 0 - 8: ptr
+ * 8 - <>: name
  */
 #[derive(Debug, Clone)]
 pub struct ObjectLabelSymbol {
     name: String,
-    pub ptr_instr: u64,
-    ptr_binary: u64,
+    pub ptr: u64,
 }
 
 impl ObjectLabelSymbol {
     fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
         let mut me = Self {
             name: String::new(),
-            ptr_instr: 0,
-            ptr_binary: 0
+            ptr: 0,
         };
 
-        me.ptr_instr = binary.read_u64::<LittleEndian>()?;
-        me.ptr_binary = binary.read_u64::<LittleEndian>()?;
+        me.ptr = binary.read_u64::<LittleEndian>()?;
 
         let mut char_vec = Vec::<u8>::new();
 
@@ -320,14 +316,154 @@ impl ObjectLabelSymbol {
         Ok(me)
     }
     fn write_bytes(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
-        binary.write_u64::<LittleEndian>(self.ptr_instr)?;
-        binary.write_u64::<LittleEndian>(self.ptr_binary)?;
+        binary.write_u64::<LittleEndian>(self.ptr)?;
 
         for b in self.name.bytes() {
             binary.write_u8(b)?;
         }
         binary.write_u8(0)?;
 
+        Ok(())
+    }
+}
+
+/**
+ * Binary reference structure:
+ * 0 - 1: size
+ * 1 - <>: name
+ */
+#[derive(Debug, Clone)]
+pub struct BinaryReference {
+    pub rf: String,
+    pub size: ConstantSize
+}
+
+impl BinaryReference {
+    fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
+        let size = match ConstantSize::from_u8(binary.read_u8()?) {
+            Some(s) => s,
+            None => {
+                return Err(Error::new(io::ErrorKind::InvalidData,
+                format!("Error occured loading BinaryConstant: invalid size")))
+            }
+        };
+
+        let mut char_vec = Vec::<u8>::new();
+
+        let mut c = binary.read_u8()?;
+
+        while c != 0 {
+            char_vec.push(c);
+            c = binary.read_u8()?;
+        }
+
+        Ok(Self {
+            size,
+            rf: String::from_utf8(char_vec).unwrap()
+        })
+    }
+    fn write_bytes(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
+        binary.write_u8(self.size.to_u8())?;
+
+        for b in self.rf.bytes() {
+            binary.write_u8(b)?;
+        }
+        binary.write_u8(0)?;
+
+        Ok(())
+    }
+}
+
+/**
+ * Binary const structure:
+ * 0 - 1: size
+ * 1 - 9: value
+ */
+#[derive(Debug, Clone)]
+pub struct BinaryConstant {
+    pub size: ConstantSize,
+    pub value: i64
+}
+
+impl BinaryConstant {
+    fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
+        let size = binary.read_u8()?;
+        let value = binary.read_i64::<LittleEndian>()?;
+
+        Ok(Self {
+            size: match ConstantSize::from_u8(size) {
+                Some(s) => s,
+                None => {
+                    return Err(Error::new(io::ErrorKind::InvalidData,
+                    format!("Error occured loading BinaryConstant: invalid size")))
+                }
+            },
+            value
+        })
+    }
+    fn write_binary(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
+        binary.write_u8(self.size.to_u8())?;
+        binary.write_i64::<LittleEndian>(self.value)?;
+
+        Ok(())
+    }
+}
+
+/**
+ * Binary unit structure description
+ * 0 - 1: Type (0 is const, 1 is ref)
+ * <data>
+ */
+#[derive(Debug, Clone)]
+pub struct BinaryUnit {
+    pub reference: Option<BinaryReference>,
+    pub constant: Option<BinaryConstant>
+}
+
+impl BinaryUnit {
+    pub fn get_size(&self) -> Option<usize> {
+        if let Some(cst) = &self.constant {
+            Some(cst.size.get_size())
+        } else if let Some(reference) = &self.reference {
+            Some(reference.size.get_size())
+        } else {
+            None
+        }
+    }
+    fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
+        let mut me = Self {
+            reference: None,
+            constant: None
+        };
+        
+        let typ = binary.read_u8()?;
+
+        match typ {
+            0 => {
+                me.constant = Some(BinaryConstant::from_bytes(binary)?)
+            },
+            1 => {
+                me.reference = Some(BinaryReference::from_bytes(binary)?)
+            },
+            _ => {
+                return Err(Error::new(io::ErrorKind::InvalidData, 
+                    format!("Invalid type for binary unit. Bad format specified.")))
+            }
+        }
+
+        Ok(me)
+    }
+    fn write_bytes(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
+        if let Some(cst) = &self.constant {
+            binary.write_u8(0)?;
+            cst.write_binary(binary)?;
+        } else if let Some(reference) = &self.reference {
+            binary.write_u8(1)?;
+            reference.write_bytes(binary)?;
+        } else {
+            return Err(Error::new(io::ErrorKind::InvalidData, 
+                format!("BinaryUnit without information!")))
+        }
         Ok(())
     }
 }
@@ -347,7 +483,8 @@ pub struct SectionData {
     name: String,
     pub instructions: Vec<InstructionData>,
     pub labels: HashMap<String, ObjectLabelSymbol>,
-    pub binary_data: Vec<u8>,
+//    pub binary_data: Vec<u8>,
+    pub binary_data: Vec<BinaryUnit>,
     pub binary_section: bool
 }
 
@@ -373,7 +510,7 @@ impl SectionData {
                 if self.labels.contains_key(&label_name) {
                     return Err(format!("Cannot merge two binary sections with similar labels!"))
                 }
-                label.ptr_binary += old_bin_length;
+                label.ptr += old_bin_length;
                 self.labels.insert(label_name, label);
             }
         } else {
@@ -384,7 +521,7 @@ impl SectionData {
                 if self.labels.contains_key(&label_name) {
                     return Err(format!("Cannot merge two binary sections with similar labels!"))
                 }
-                label.ptr_instr += old_instr_length;
+                label.ptr += old_instr_length;
                 self.labels.insert(label_name, label);
             }
         }
@@ -394,7 +531,14 @@ impl SectionData {
 
     pub fn get_binary_size(&self) -> usize {
         if self.binary_section {
-            return self.binary_data.len()
+            let mut binary_len = 0;
+
+            for unit in self.binary_data.iter() {
+                // unwrap because we assume this is valid from object file
+                binary_len += unit.get_size().unwrap();
+            }
+
+            return binary_len
         }
 
         let instructions = Instructions::new();
@@ -411,7 +555,15 @@ impl SectionData {
 
     pub fn get_binary_position(&self, index: u64) -> u64 {
         if self.binary_section {
-            return index
+            let mut binary_index = 0;
+
+            for (i, unit) in self.binary_data.iter().enumerate() {
+                if i as u64 == index { break }
+                // unwrap because we assume this is valid from object file
+                binary_index += unit.get_size().unwrap();
+            }
+
+            return binary_index as u64
         }
 
         let instructions = Instructions::new();
@@ -430,9 +582,9 @@ impl SectionData {
     pub fn get_label_binary_offset(&self, label_name: &str) -> Option<u64> {
         let label = self.labels.get(label_name)?;
 
-        if self.binary_section { return Some(label.ptr_binary) }
+        if self.binary_section { return Some(label.ptr) }
 
-        Some(self.get_binary_position(label.ptr_instr))
+        Some(self.get_binary_position(label.ptr))
     }
 
     fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
@@ -473,8 +625,8 @@ impl SectionData {
         }
 
         for _ in 0..binary_count {
-            let binary = binary.read_u8()?;
-            me.binary_data.push(binary);
+            let bin = BinaryUnit::from_bytes(binary)?;
+            me.binary_data.push(bin);
         }
 
         me.binary_section = me.binary_data.len() != 0;
@@ -505,7 +657,8 @@ impl SectionData {
         }
 
         for byt in self.binary_data.iter() {
-            binary.write_u8(*byt)?;
+            byt.write_bytes(binary)?;
+            //binary.write_u8(*byt)?;
         }
 
         Ok(())
@@ -666,12 +819,29 @@ impl ObjectFormat {
             match &child.node_type {
                 NodeType::ConstInteger(num) => {
                     if *num < 256 {
-                        // im sorry, but i dont think this will throw an error
-                        sec.binary_data.write_i8(*num as i8).unwrap();
+                        sec.binary_data.push(BinaryUnit {
+                            constant: Some(BinaryConstant {
+                                size: ConstantSize::Byte,
+                                value: *num
+                            }),
+                            reference: None
+                        });
                     } else if *num < 65536 {
-                        sec.binary_data.write_i16::<LittleEndian>(*num as i16).unwrap();
+                        sec.binary_data.push(BinaryUnit {
+                            constant: Some(BinaryConstant {
+                                size: ConstantSize::Word,
+                                value: *num
+                            }),
+                            reference: None
+                        });
                     } else {
-                        sec.binary_data.write_i32::<LittleEndian>(*num as i32).unwrap();
+                        sec.binary_data.push(BinaryUnit {
+                            constant: Some(BinaryConstant {
+                                size: ConstantSize::DoubleWord,
+                                value: *num
+                            }),
+                            reference: None
+                        });
                     }
                 }
                 NodeType::Negate | NodeType::Expression => {
@@ -679,7 +849,13 @@ impl ObjectFormat {
                 }
                 NodeType::String(some_str) => {
                     for b in some_str.bytes() {
-                        sec.binary_data.write_u8(b).unwrap();
+                        sec.binary_data.push(BinaryUnit {
+                            constant: Some(BinaryConstant {
+                                size: ConstantSize::Byte,
+                                value: b as i64
+                            }),
+                            reference: None
+                        });
                     }
                 }
                 _ => unexpected_node!(child)
@@ -702,7 +878,7 @@ impl ObjectFormat {
 
         sec.binary_section = true;
 
-        let mut binary = Vec::<u8>::new();
+        let mut binary = Vec::<BinaryUnit>::new();
 
         let child_node = match children.get(0) { 
             Some(c) => c,
@@ -711,7 +887,13 @@ impl ObjectFormat {
 
         if let NodeType::ConstInteger(n) = child_node.node_type {
             for _ in 0..n {
-                binary.push(0);
+                binary.push(BinaryUnit {
+                    reference: None,
+                    constant: Some(BinaryConstant {
+                        size: ConstantSize::Byte,
+                        value: 0
+                    })
+                });
             }
         }
 
@@ -738,13 +920,21 @@ impl ObjectFormat {
         };
 
         if let NodeType::String(path) = &child_node.node_type {
-            let mut data = match fs::read(path) {
+            let data = match fs::read(path) {
                 Ok(d) => d,
                 Err(e) => {
                     return Err(format!("Error occured while reading file: {e}"))
                 }
             };
-            sec.binary_data.append(&mut data);
+            for b in data {
+                sec.binary_data.push(BinaryUnit {
+                    reference: None,
+                    constant: Some(BinaryConstant {
+                        size: ConstantSize::Byte,
+                        value: b as i64
+                    })
+                })
+            }
         } else {
             return Err(format!("DATA instruction takes String. {:?} provided", child_node.node_type))
         }
@@ -773,14 +963,26 @@ impl ObjectFormat {
         for child in children {
             match &child.node_type {
                 NodeType::ConstInteger(num) => {
-                    sec.binary_data.write_i32::<LittleEndian>(*num as i32).unwrap();
+                    sec.binary_data.push(BinaryUnit {
+                        reference: None,
+                        constant: Some(BinaryConstant {
+                            size: ConstantSize::DoubleWord,
+                            value: *num
+                        })
+                    });
                 }
                 NodeType::Negate | NodeType::Expression => {
                     todo!()
                 }
                 NodeType::String(some_str) => {
                     for b in some_str.bytes() {
-                        sec.binary_data.write_u32::<LittleEndian>(b as u32).unwrap();
+                        sec.binary_data.push(BinaryUnit {
+                            reference: None,
+                            constant: Some(BinaryConstant {
+                                size: ConstantSize::DoubleWord,
+                                value: b as i64
+                            })
+                        });
                     }
                 }
                 _ => unexpected_node!(child)
@@ -811,14 +1013,26 @@ impl ObjectFormat {
         for child in children {
             match &child.node_type {
                 NodeType::ConstInteger(num) => {
-                    sec.binary_data.write_i16::<LittleEndian>(*num as i16).unwrap();
+                    sec.binary_data.push(BinaryUnit {
+                        reference: None,
+                        constant: Some(BinaryConstant {
+                            size: ConstantSize::Word,
+                            value: *num
+                        })
+                    });
                 }
                 NodeType::Negate | NodeType::Expression => {
                     todo!()
                 }
                 NodeType::String(some_str) => {
                     for b in some_str.bytes() {
-                        sec.binary_data.write_u16::<LittleEndian>(b as u16).unwrap();
+                        sec.binary_data.push(BinaryUnit {
+                            reference: None,
+                            constant: Some(BinaryConstant {
+                                size: ConstantSize::Word,
+                                value: b as i64
+                            })
+                        });
                     }
                 }
                 _ => unexpected_node!(child)
@@ -1179,7 +1393,7 @@ version! It may not be compatible!");
     }
 
     pub fn load_parser_node(&mut self, node: &ParserNode) -> Result<(), String> {
-        let instructions = Instructions::new();
+        //let instructions = Instructions::new();
 
         if node.node_type != NodeType::Program {
             return Err(format!("Cannot load not Program node into objgen"))
@@ -1212,14 +1426,12 @@ version! It may not be compatible!");
                             return Err(format!("Section '{}' does not exist! Maybe compiler bug?", self.current_section))
                         }
                     };
-                    let mut binlen = 0usize;
+                    let pointer: usize;
 
                     if current_section.binary_data.len() == 0 {
-                        for instrs in current_section.instructions.iter() {
-                            binlen += instructions.get_instruction(instrs.opcode).unwrap().get_size();
-                        }
+                        pointer = current_section.instructions.len();
                     } else {
-                        binlen = current_section.binary_data.len();
+                        pointer = current_section.binary_data.len();
                     }
 
                     if current_section.labels.contains_key(name) {
@@ -1228,8 +1440,7 @@ version! It may not be compatible!");
 
                     let label = ObjectLabelSymbol {
                         name: name.clone(),
-                        ptr_instr: current_section.instructions.len() as u64,
-                        ptr_binary: binlen as u64,
+                        ptr: pointer as u64,
                     };
                     
                     current_section.labels.insert(name.clone(), label);
