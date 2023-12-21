@@ -117,6 +117,17 @@ impl Linker {
         }
     }
 
+    pub fn save_object(&self, path: &str) -> Result<(), String> {
+        let mut object = ObjectFormat::new();
+        for (sec_name, sec) in self.section_symbols.iter() {
+            object.sections.insert(sec_name.clone(), sec.clone());
+        }
+
+        object.header.sections_length = object.sections.len() as u64;
+
+        object.save_object(path)
+    }
+
     pub fn load_symbols(&mut self, objfmt: ObjectFormat) -> Result<(), String> {
         for (sec_name, sec) in objfmt.sections {
             if self.section_symbols.contains_key(&sec_name) {

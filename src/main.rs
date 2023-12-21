@@ -219,7 +219,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    if keep_object {
+    if keep_object && !link_object {
         let (obj_file, _) = match input_file.rsplit_once('.') {
             Some(s) => s,
             None => (input_file.as_str(), "")
@@ -259,6 +259,18 @@ fn main() -> ExitCode {
                     return ExitCode::FAILURE
                 }
             };
+        }
+
+        if keep_object {
+            let filename = output_file.clone() + ".sao";
+
+            match linker.save_object(&filename) {
+                Ok(()) => {},
+                Err(e) => {
+                    eprintln!("Error occured while saving linker object: {e}");
+                    return ExitCode::FAILURE
+                }
+            }
         }
 
         match linker.save_binary(&output_file, linker_script) {

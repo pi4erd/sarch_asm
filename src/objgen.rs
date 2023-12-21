@@ -675,9 +675,9 @@ impl SectionData {
 pub const HEADER_SIZE: u64 = 8 * 2 + 4;
 
 #[derive(Debug, Clone)]
-struct ObjectFormatHeader {
+pub struct ObjectFormatHeader {
     magic: u64,
-    sections_length: u64, // sections count
+    pub sections_length: u64, // sections count
     version: u32,
 }
 
@@ -728,7 +728,7 @@ struct Define {
 
 #[derive(Debug, Clone)]
 pub struct ObjectFormat {
-    header: ObjectFormatHeader,
+    pub header: ObjectFormatHeader,
     defines: HashMap<String, Define>,
     pub sections: HashMap<String, SectionData>,
     compiler_instructions: HashMap<String, fn(&mut Self, &Vec<ParserNode>) -> Result<(), String>>,
