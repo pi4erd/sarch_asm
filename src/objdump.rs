@@ -23,7 +23,7 @@ impl Objdump {
             let mut offset = 0;
 
             for (i, instruction) in sec.instructions.iter().enumerate() {
-                match sec.labels.iter().find(|(_, l)| l.ptr_instr == (i as u64)) {
+                match sec.labels.iter().find(|(_, l)| l.ptr == (i as u64)) {
                     Some((l_name, _)) => {
                         result += &format!("\n  <'{}'> {:#06x}:\n", l_name, offset);
                     }

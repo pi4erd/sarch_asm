@@ -1,4 +1,4 @@
-use crate::{objgen::{ObjectFormat, SectionData, InstructionData, ConstantSize}, symbols::{Instructions, ArgumentTypes}};
+use crate::{objgen::{ObjectFormat, SectionData, InstructionData, ConstantSize, BinaryUnit}, symbols::{Instructions, ArgumentTypes}};
 use std::{fs, io::{Write, Read}, collections::HashMap};
 use byteorder::{LittleEndian, WriteBytesExt};
 use serde::{Serialize, Deserialize};
@@ -277,9 +277,46 @@ impl Linker {
         Ok(())
     }
 
+    fn write_binary_unit_binary(&self, binary: &mut Vec<u8>, unit: &BinaryUnit) -> Result<(), String> {
+        if let Some(reference) = &unit.reference {
+            let sec_name = match self.find_section_with_label(&reference.rf) {
+                Some(s) => s,
+                None => {
+                    return Err(format!("Failed to resolve reference '{}': Undefined reference.", reference.rf))
+                }
+            };
+
+            let section = &self.section_symbols[sec_name];
+
+            let section_local_offset = section.get_label_binary_offset(&reference.rf).unwrap();
+
+            let section_offset = self.get_section_offset(sec_name)?;
+
+            let symbol_position = section_offset + section_local_offset;
+
+            match reference.size {
+                ConstantSize::Byte => binary.write_u8(symbol_position as u8).unwrap(),
+                ConstantSize::Word => binary.write_u16::<LittleEndian>(symbol_position as u16).unwrap(),
+                ConstantSize::DoubleWord => binary.write_u32::<LittleEndian>(symbol_position as u32).unwrap(),
+            }
+        } else if let Some(constant) = &unit.constant {
+            match constant.size {
+                ConstantSize::Byte => binary.write_i8(constant.value as i8).unwrap(),
+                ConstantSize::Word => binary.write_i16::<LittleEndian>(constant.value as i16).unwrap(),
+                ConstantSize::DoubleWord => binary.write_i32::<LittleEndian>(constant.value as i32).unwrap()
+            }
+        } else {
+            return Err(format!("Binary unit contains no information to write!"))
+        }
+        Ok(())
+    }
+
     fn section_binary(&self, binary: &mut Vec<u8>, section: &SectionData) -> Result<(), String> {
         if section.binary_section {
-            binary.append(&mut section.binary_data.clone());
+            for unit in section.binary_data.iter() {
+                self.write_binary_unit_binary(binary, unit)?;
+            }
+            //binary.append(&mut section.binary_data.clone());
         } else {
             for instruction in section.instructions.iter() {
                 self.write_instruction_binary(binary, instruction)?;
