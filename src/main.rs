@@ -31,6 +31,7 @@ fn print_usage(program: &str) {
     eprintln!("\t-o | --output <filename>\tSpecify output file");
     eprintln!("\t-v | --version\t\t\tPrint current version");
     eprintln!("\t-l | --link-object\t\tAdds object file to a linker");
+    eprintln!("\t     --entrypoint\t\tSpecify entrypoint of a program");
     eprintln!("\t     --link\t\t\tTreat input file as SAO and link it");
 }
 
