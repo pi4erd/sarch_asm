@@ -11,7 +11,7 @@ use parser::Parser;
 
 use crate::{objgen::ObjectFormat, linker::Linker};
 
-use std::{fs, env::args, process::ExitCode};
+use std::{fs, env::args, process::ExitCode, iter::zip};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION", "No crate version is defined in environment variables.");
 const GITHUB: &'static str = "https://github.com/pi4erd/sarch_asm";
@@ -44,7 +44,7 @@ fn main() -> ExitCode {
     let mut args: std::env::Args = args();
 
     // Inputs #####
-    let mut input_file = String::new();
+    let mut input_files: Vec<String> = Vec::new();
     let mut output_file = "output.bin".to_string();
     let mut linker_script: Option<&str> = None;
     let mut lib_files = Vec::<String>::new();
@@ -132,80 +132,96 @@ fn main() -> ExitCode {
                 // Links input file as object file without compiling it
                 // May be useful trying to compile multiple object files
                 input_is_object = true;
+                link_object = true;
             }
             _ => {
-                if input_file.is_empty() {
-                    input_file = arg;
-                    continue
-                }
-                print_usage(&program);
-                return ExitCode::FAILURE
+                input_files.push(arg);
             }
         }
     }
 
-    if input_file.is_empty() {
+    if input_files.len() == 0 {
         print_usage(&program);
         return ExitCode::FAILURE
     }
-    let mut objgenerator: ObjectFormat;
+    let mut objects: Vec<ObjectFormat> = Vec::new();
 
     if !input_is_object {
-        let lexer = AsmLexer::new();
+        for filepath in input_files.iter() {
+            let lexer = AsmLexer::new();
 
-        let code = match fs::read_to_string(&input_file) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Failed to read file: {}", e);
-                return ExitCode::FAILURE
+            let code = match fs::read_to_string(filepath) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Failed to read file: {}", e);
+                    return ExitCode::FAILURE
+                }
+            };
+            
+            let tokens = lexer.tokenize(&code);
+
+            if print_tokens {
+                for token in tokens.iter() {
+                    println!("Tokens: {:?}", token);
+                }
             }
-        };
-        
-        let tokens = lexer.tokenize(&code);
 
-        if print_tokens {
-            for token in tokens.iter() {
-                println!("Tokens: {:?}", token);
+            let mut parser = Parser::new();
+            let node = match parser.parse(&tokens) {
+                Ok(n) => n,
+                Err(err) => {
+                    eprintln!("Error occured while parsing:\n{}", err);
+                    return ExitCode::FAILURE
+                }
+            };
+
+            if print_ast {
+                println!("Parser tree: {:#?}", node);
             }
-        }
 
-        let mut parser = Parser::new();
-        let node = match parser.parse(&tokens) {
-            Ok(n) => n,
-            Err(err) => {
-                eprintln!("Error occured while parsing:\n{}", err);
-                return ExitCode::FAILURE
+            let mut object = ObjectFormat::new();
+            match object.load_parser_node(node) {
+                Ok(()) => {},
+                Err(err) => {
+                    eprintln!("Error occured while generating object file:\n{}", err);
+                    return ExitCode::FAILURE
+                }
             }
-        };
-
-        if print_ast {
-            println!("Parser tree: {:#?}", node);
-        }
-
-        objgenerator = ObjectFormat::new();
-        match objgenerator.load_parser_node(node) {
-            Ok(()) => {},
-            Err(err) => {
-                eprintln!("Error occured while generating object file:\n{}", err);
-                return ExitCode::FAILURE
+            if print_object_tree {
+                println!("Object tree: {:#?}", object);
             }
-        }
-        if print_object_tree {
-            println!("Object tree: {:#?}", objgenerator);
+
+            objects.push(object)
         }
     }
     else {
-        objgenerator = match ObjectFormat::from_file(&input_file) {
-            Ok(k) => k,
-            Err(e) => {
-                eprintln!("Error occured while parsing binary from '{}': {}", input_file, e);
-                return ExitCode::FAILURE
-            }
-        };
+        for object_input in input_files.iter() {
+            let object = match ObjectFormat::from_file(object_input) {
+                Ok(k) => k,
+                Err(e) => {
+                    eprintln!("Error occured while parsing binary from '{}': {}", object_input, e);
+                    return ExitCode::FAILURE
+                }
+            };
+            objects.push(object)
+        }
     }
 
     if disassemble {
-        let dumper = Objdump::new(objgenerator);
+        if objects.len() > 1 {
+            eprintln!("Cannot disassemble multiple files!");
+            return ExitCode::FAILURE
+        }
+        let object = match objects.get(0) {
+            Some(o) => o,
+            None => {
+                eprintln!("Not enough object files!");
+                print_usage(&program);
+                return ExitCode::FAILURE
+            }
+        };
+        let input_file = &input_files[0];
+        let dumper = Objdump::new(object.clone());
         match dumper.get_disassembly() {
             Ok(s) => {
                 println!("Disassembly for '{}':\n", input_file);
@@ -220,29 +236,34 @@ fn main() -> ExitCode {
     }
 
     if keep_object && !link_object {
-        let (obj_file, _) = match input_file.rsplit_once('.') {
-            Some(s) => s,
-            None => (input_file.as_str(), "")
-        };
-        match objgenerator.save_object(&(obj_file.to_string() + ".sao")) {
+        if input_files.len() > 1 {
+            eprintln!("Cannot compile multiple object files without linking!");
+            print_usage(&program);
+            return ExitCode::FAILURE
+        }
+        let object = &objects[0];
+        match object.save_object(&output_file) {
             Ok(()) => {},
             Err(e) => {
                 eprintln!("Error occured while saving binary into file:\n{}", e);
                 return ExitCode::FAILURE
             }
         }
+        return ExitCode::SUCCESS
     }
 
     if link_object {
         let mut linker = Linker::new();
     
-        match linker.load_symbols(objgenerator) {
-            Ok(_) => {},
-            Err(e) => {
-                eprintln!("Error occured while loading a symbol in linker: {e}");
-                return ExitCode::FAILURE
-            }
-        };
+        for object in objects {
+            match linker.load_symbols(object) {
+                Ok(_) => {},
+                Err(e) => {
+                    eprintln!("Error occured while loading a symbol in linker: {e}");
+                    return ExitCode::FAILURE
+                }
+            };
+        }
         
         for lib in lib_files {
             let lib_fmt = match ObjectFormat::from_file(&lib) {
