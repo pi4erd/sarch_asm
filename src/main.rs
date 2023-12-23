@@ -11,7 +11,7 @@ use parser::Parser;
 
 use crate::{objgen::ObjectFormat, linker::Linker};
 
-use std::{fs, env::args, process::ExitCode, iter::zip};
+use std::{fs, env::args, process::ExitCode};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION", "No crate version is defined in environment variables.");
 const GITHUB: &'static str = "https://github.com/pi4erd/sarch_asm";
@@ -53,6 +53,7 @@ fn main() -> ExitCode {
     let mut input_is_object = false;
     let mut keep_object = false;
     let mut disassemble = false;
+    let mut entrypoint: Option<String> = None;
     // ############
 
     let mut linker_script_filename: String;
@@ -133,6 +134,17 @@ fn main() -> ExitCode {
                 // May be useful trying to compile multiple object files
                 input_is_object = true;
                 link_object = true;
+            }
+            "--entrypoint" => {
+                let labelname = match args.next() {
+                    Some(lbl) => lbl,
+                    None => {
+                        eprintln!("Expected label name after '{arg}'");
+                        print_usage(&program);
+                        return ExitCode::FAILURE
+                    }
+                };
+                entrypoint = Some(labelname)
             }
             _ => {
                 input_files.push(arg);
@@ -254,6 +266,19 @@ fn main() -> ExitCode {
 
     if link_object {
         let mut linker = Linker::new();
+
+        if let Some(entry_label) = entrypoint {
+            let first_object = ObjectFormat::create_jumper(entry_label);
+            match linker.load_symbols(first_object) {
+                Ok(_) => {},
+                Err(e) => {
+                    // this error shouldn't happen. if it does happen,
+                    // then please fix this in objgen.rs/ObjectFormat::create_jumper()
+                    eprintln!("Compiler error occured (you're lucky): {e}");
+                    return ExitCode::FAILURE
+                }
+            };
+        }
     
         for object in objects {
             match linker.load_symbols(object) {

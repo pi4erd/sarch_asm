@@ -1070,6 +1070,23 @@ impl ObjectFormat {
     }
     // End compiler instructions
 
+    pub fn create_jumper(entrypoint: String) -> Self {
+        let mut me = Self::new();
+
+        let mut section = SectionData::new();
+        section.instructions.push(InstructionData {
+            opcode: 12, // jpr opcode
+            references: vec![Reference {
+                argument_pos: 0,
+                rf: entrypoint
+            }],
+            constants: Vec::new()
+        });
+        me.sections.insert(section.name.clone(), section);
+
+        me
+    }
+
     pub fn new() -> Self {
         let mut me = Self {
             header: ObjectFormatHeader::new(),
