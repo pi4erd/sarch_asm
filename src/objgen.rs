@@ -1223,8 +1223,8 @@ version! It may not be compatible!");
                     &self.defines[iden],
                     depth + 1
                 )?;
+                return Ok(())
             }
-            return Ok(())
         }
         match expected_argument {
             ArgumentTypes::FloatingPoint |
