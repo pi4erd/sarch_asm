@@ -5,9 +5,12 @@ pub mod objgen;
 pub mod linker;
 pub mod objdump;
 
-use lexer::AsmLexer;
+pub mod tests;
+
+use lexer::{AsmLexer, LexerToken};
 use objdump::Objdump;
-use parser::Parser;
+use parser::{Parser, ParserNode};
+use regex_lexer::Token;
 
 use crate::{objgen::ObjectFormat, linker::Linker};
 
@@ -33,6 +36,35 @@ fn print_usage(program: &str) {
     eprintln!("\t-l | --link-object\t\tAdds object file to a linker");
     eprintln!("\t     --entrypoint\t\tSpecify entrypoint of a program");
     eprintln!("\t     --link\t\t\tTreat input file as SAO and link it");
+}
+
+pub fn lex(code: &str, print_tokens: bool) -> Vec<Token<'_, LexerToken>> {
+    let lexer = AsmLexer::new();
+    let tokens = lexer.tokenize(&code);
+
+    if print_tokens {
+        for token in tokens.iter() {
+            println!("Tokens: {:?}", token);
+        }
+    }
+
+    tokens
+}
+
+pub fn parse(tokens: Vec<Token<'_, LexerToken>>, print_ast: bool) -> Result<ParserNode, String> {
+    let mut parser = Parser::new();
+    match parser.parse(&tokens) {
+        Ok(n) => n,
+        Err(err) => {
+            return Err(format!("Error occured while parsing:\n{}", err))
+        }
+    };
+
+    if print_ast {
+        println!("Parser tree: {:#?}", &parser.root);
+    }
+
+    Ok(parser.root)
 }
 
 fn main() -> ExitCode {
@@ -161,7 +193,6 @@ fn main() -> ExitCode {
 
     if !input_is_object {
         for filepath in input_files.iter() {
-            let lexer = AsmLexer::new();
 
             let code = match fs::read_to_string(filepath) {
                 Ok(s) => s,
@@ -171,29 +202,18 @@ fn main() -> ExitCode {
                 }
             };
             
-            let tokens = lexer.tokenize(&code);
+            let tokens = lex(&code, print_tokens);
 
-            if print_tokens {
-                for token in tokens.iter() {
-                    println!("Tokens: {:?}", token);
-                }
-            }
-
-            let mut parser = Parser::new();
-            let node = match parser.parse(&tokens) {
+            let node = match parse(tokens, print_ast) {
                 Ok(n) => n,
-                Err(err) => {
-                    eprintln!("Error occured while parsing:\n{}", err);
+                Err(e) => {
+                    eprintln!("{}", e);
                     return ExitCode::FAILURE
                 }
             };
 
-            if print_ast {
-                println!("Parser tree: {:#?}", node);
-            }
-
             let mut object = ObjectFormat::new();
-            match object.load_parser_node(node) {
+            match object.load_parser_node(&node) {
                 Ok(()) => {},
                 Err(err) => {
                     eprintln!("Error occured while generating object file:\n{}", err);

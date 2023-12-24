@@ -80,7 +80,7 @@ impl Reference {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConstantSize {
     Byte, Word, DoubleWord
 }
@@ -111,7 +111,7 @@ impl ConstantSize {
  * 1 - 2: const size
  * 2 - 10: value
  */
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Constant {
     pub argument_pos: u8,
     pub size: ConstantSize,
@@ -1208,11 +1208,214 @@ version! It may not be compatible!");
         instr(self, children)
     }
 
-    fn process_instruction(&mut self, name: &str, children: &Vec<ParserNode>, current_label: &str) -> Result<(), String> {
-        let registers = Registers::new();
-        let conditions = Conditions::new();
+    fn resolve_define(&self, arg: usize, instr: &mut InstructionData, expected_argument: &ArgumentTypes, define_symbol: &Define, depth: i32)
+        -> Result<(), String>
+    {
+        if let NodeType::Identifier(iden) = &define_symbol.node.node_type {
+            if depth > 100 {
+                return Err(format!("Looping defines detected!"))
+            }
+            if self.defines.contains_key(iden) {
+                self.resolve_define(
+                    arg,
+                    instr,
+                    expected_argument,
+                    &self.defines[iden],
+                    depth + 1
+                )?;
+            }
+            return Ok(())
+        }
+        match expected_argument {
+            ArgumentTypes::FloatingPoint |
+            ArgumentTypes::AbsPointer |
+            ArgumentTypes::RelPointer |
+            ArgumentTypes::Immediate32 => {
+                match &define_symbol.node.node_type {
+                    NodeType::ConstInteger(n) => {
+                        instr.constants.push(Constant { 
+                            argument_pos: arg as u8, 
+                            size: ConstantSize::DoubleWord, 
+                            value: *n
+                        });
+                    }
+                    NodeType::ConstFloat(n) => {
+                        instr.constants.push(Constant { 
+                            argument_pos: arg as u8,
+                            size: ConstantSize::DoubleWord,
+                            value: (*n).to_bits() as i64
+                        });
+                    }
+                    _ => unexpected_node!(define_symbol.node)
+                }
+            }
+            ArgumentTypes::Immediate16 => {
+                match &define_symbol.node.node_type {
+                    NodeType::ConstInteger(n) => {
+                        instr.constants.push(Constant { 
+                            argument_pos: arg as u8, 
+                            size: ConstantSize::Word,
+                            value: *n & 0xFFFF
+                        });
+                    }
+                    _ => unexpected_node!(define_symbol.node)
+                }
+            }
+            ArgumentTypes::Immediate8 => {
+                match &define_symbol.node.node_type {
+                    NodeType::ConstInteger(n) => {
+                        instr.constants.push(Constant { 
+                            argument_pos: arg as u8, 
+                            size: ConstantSize::Byte, 
+                            value: *n & 0xFF
+                        });
+                    }
+                    _ => unexpected_node!(define_symbol.node)
+                }
+            }
+            _ => unexpected_node!(define_symbol.node)
+        }
+        Ok(())
+    }
 
+    fn resolve_instruction(&self, 
+        arg: &ParserNode, 
+        instr: &mut InstructionData,
+        expected_argument: &ArgumentTypes,
+        index: usize,
+        current_label: &str
+    ) -> Result<(), String>
+    {
+        let conditions = Conditions::new();
+        let registers = Registers::new();
+
+        match &arg.node_type { // TODO: Implement expressions
+            NodeType::Identifier(identifier_name) => {
+                if self.defines.contains_key(identifier_name) {
+                    let define_symbol = &self.defines[identifier_name];
+
+                    self.resolve_define(index, instr, &expected_argument, define_symbol, 0)?;
+                } else {
+                    match expected_argument {
+                        ArgumentTypes::Condition => {
+                            let cond = match conditions.get_condition(identifier_name) {
+                                Some(c) => {c},
+                                None => unexpected_node!(arg)
+                            };
+                            instr.constants.push(Constant {
+                                argument_pos: index as u8,
+                                size: ConstantSize::Byte,
+                                value: *cond as i64
+                            });
+                        }
+                        _ => {
+                            let mut identifier = identifier_name.clone();
+                            if identifier.starts_with('@') {
+                                identifier = current_label.to_string() + &identifier;
+                            } else if identifier == "@" {
+                                identifier = current_label.to_string();
+                            }
+                            instr.references.push(Reference {
+                                argument_pos: index as u8,
+                                rf: identifier
+                            })
+                        }
+                    }
+                }
+            }
+            NodeType::ConstFloat(n) => {
+                match expected_argument {
+                    ArgumentTypes::FloatingPoint |
+                    ArgumentTypes::Immediate32 => {
+                        instr.constants.push(Constant {
+                            argument_pos: index as u8,
+                            size: ConstantSize::DoubleWord,
+                            value: (*n).to_bits() as i64
+                        });
+                    }
+                    _ => unexpected_node!(arg)
+                }
+            }
+            NodeType::ConstInteger(n) => {
+                match expected_argument {
+                    ArgumentTypes::AbsPointer |
+                    ArgumentTypes::RelPointer |
+                    ArgumentTypes::Immediate32 => {
+                        instr.constants.push(Constant {
+                            argument_pos: index as u8,
+                            size: ConstantSize::DoubleWord,
+                            value: *n as i64
+                        });
+                    }
+                    ArgumentTypes::Immediate16 => {
+                        instr.constants.push(Constant {
+                            argument_pos: index as u8,
+                            size: ConstantSize::Word,
+                            value: (*n & 0xFFFF) as i64
+                        });
+                    }
+                    ArgumentTypes::Immediate8 => {
+                        instr.constants.push(Constant {
+                            argument_pos: index as u8,
+                            size: ConstantSize::Byte,
+                            value: (*n & 0xFF) as i64
+                        });
+                    }
+                    _ => unexpected_node!(arg)
+                }
+            }
+            NodeType::Register(name) => {
+                match expected_argument {
+                    ArgumentTypes::Register16 => {
+                        instr.constants.push(Constant {
+                            argument_pos: index as u8,
+                            size: ConstantSize::Byte,
+                            value: match registers.get16(name) {
+                                Some(r) => *r as i64,
+                                None => {
+                                    return Err(format!("Invalid 16 bit register \
+                                    name '{}'.", name))
+                                }
+                            }
+                        });
+                    }
+                    ArgumentTypes::Register32 => {
+                        instr.constants.push(Constant {
+                            argument_pos: index as u8,
+                            size: ConstantSize::Byte,
+                            value: match registers.get32(name) {
+                                Some(r) => *r as i64,
+                                None => {
+                                    return Err(format!("Invalid 32 bit register \
+                                    name '{}'.", name))
+                                }
+                            }
+                        });
+                    }
+                    ArgumentTypes::Register8 => {
+                        instr.constants.push(Constant {
+                            argument_pos: index as u8,
+                            size: ConstantSize::Byte,
+                            value: match registers.get8(name) {
+                                Some(r) => *r as i64,
+                                None => {
+                                    return Err(format!("Invalid 8 bit register \
+                                    name '{}'.", name))
+                                }
+                            }
+                        });
+                    }
+                    _ => unexpected_node!(arg)
+                }
+            }
+            _ => unexpected_node!(arg)
+        }
+        Ok(())
+    }
+
+    fn process_instruction(&mut self, name: &str, children: &Vec<ParserNode>, current_label: &str) -> Result<(), String> {
         let instructions = Instructions::new();
+
         let opcode = match instructions.get_opcode(name) {
             Some(opc) => opc,
             None => {
@@ -1232,198 +1435,11 @@ version! It may not be compatible!");
             constants: Vec::new()
         };
 
-        // XXX: Maybe refactor at some point
-        // Idk when
-
-        // Welcome to the hellhole
-        // This is a stupid piece of code
-        // And yes, I don't want to change it
-        // Because it's perfect
-        // There is nothing closer to perfection than this
-        // You will understand it soon too
-        // When you dive in this code
-        // When you try to revise it
-        // You will be able to see
-        // How actually beautiful this code is
-        // How accurate every character has been placed
-        // How thin is the line between its life and death
-        // And how easy it is to break it
-        // Now, that you're warned
-        // Go ahead. Do what you want
-        // You don't need to bother yourself with this text anymore
-
         for i in 0..children.len() {
             let arg = &children[i];
             let expected_argument = instruction.args[i];
-            match &arg.node_type { // TODO: Implement expressions
-                NodeType::Identifier(identifier_name) => {
-                    if self.defines.contains_key(identifier_name) {
-                        let define_symbol = &self.defines[identifier_name];
 
-                        match expected_argument {
-                            ArgumentTypes::FloatingPoint |
-                            ArgumentTypes::AbsPointer |
-                            ArgumentTypes::RelPointer |
-                            ArgumentTypes::Immediate32 => {
-                                match &define_symbol.node.node_type {
-                                    NodeType::ConstInteger(n) => {
-                                        instr.constants.push(Constant { 
-                                            argument_pos: i as u8, 
-                                            size: ConstantSize::DoubleWord, 
-                                            value: *n
-                                        });
-                                    }
-                                    NodeType::ConstFloat(n) => {
-                                        instr.constants.push(Constant { 
-                                            argument_pos: i as u8,
-                                            size: ConstantSize::DoubleWord,
-                                            value: (*n).to_bits() as i64
-                                        });
-                                    }
-                                    _ => unexpected_node!(define_symbol.node)
-                                }
-                            }
-                            ArgumentTypes::Immediate16 => {
-                                match &define_symbol.node.node_type {
-                                    NodeType::ConstInteger(n) => {
-                                        instr.constants.push(Constant { 
-                                            argument_pos: i as u8, 
-                                            size: ConstantSize::Word,
-                                            value: *n & 0xFFFF
-                                        });
-                                    }
-                                    _ => unexpected_node!(define_symbol.node)
-                                }
-                            }
-                            ArgumentTypes::Immediate8 => {
-                                match &define_symbol.node.node_type {
-                                    NodeType::ConstInteger(n) => {
-                                        instr.constants.push(Constant { 
-                                            argument_pos: i as u8, 
-                                            size: ConstantSize::Byte, 
-                                            value: *n & 0xFF
-                                        });
-                                    }
-                                    _ => unexpected_node!(define_symbol.node)
-                                }
-                            }
-                            _ => unexpected_node!(define_symbol.node)
-                        }
-                    } else {
-                        match expected_argument {
-                            ArgumentTypes::Condition => {
-                                let cond = match conditions.get_condition(identifier_name) {
-                                    Some(c) => {c},
-                                    None => unexpected_node!(arg)
-                                };
-                                instr.constants.push(Constant {
-                                    argument_pos: i as u8,
-                                    size: ConstantSize::Byte,
-                                    value: *cond as i64
-                                });
-                            }
-                            _ => {
-                                let mut identifier = identifier_name.clone();
-                                if identifier.starts_with('@') {
-                                    identifier = current_label.to_string() + &identifier;
-                                } else if identifier == "@" {
-                                    identifier = current_label.to_string();
-                                }
-                                instr.references.push(Reference {
-                                    argument_pos: i as u8,
-                                    rf: identifier
-                                })
-                            }
-                        }
-                    }
-                }
-                NodeType::ConstFloat(n) => {
-                    match expected_argument {
-                        ArgumentTypes::FloatingPoint |
-                        ArgumentTypes::Immediate32 => {
-                            instr.constants.push(Constant {
-                                argument_pos: i as u8,
-                                size: ConstantSize::DoubleWord,
-                                value: (*n).to_bits() as i64
-                            });
-                        }
-                        _ => unexpected_node!(arg)
-                    }
-                }
-                NodeType::ConstInteger(n) => {
-                    match expected_argument {
-                        ArgumentTypes::AbsPointer |
-                        ArgumentTypes::RelPointer |
-                        ArgumentTypes::Immediate32 => {
-                            instr.constants.push(Constant {
-                                argument_pos: i as u8,
-                                size: ConstantSize::DoubleWord,
-                                value: *n as i64
-                            });
-                        }
-                        ArgumentTypes::Immediate16 => {
-                            instr.constants.push(Constant {
-                                argument_pos: i as u8,
-                                size: ConstantSize::Word,
-                                value: (*n & 0xFFFF) as i64
-                            });
-                        }
-                        ArgumentTypes::Immediate8 => {
-                            instr.constants.push(Constant {
-                                argument_pos: i as u8,
-                                size: ConstantSize::Byte,
-                                value: (*n & 0xFF) as i64
-                            });
-                        }
-                        _ => unexpected_node!(arg)
-                    }
-                }
-                NodeType::Register(name) => {
-                    match expected_argument {
-                        ArgumentTypes::Register16 => {
-                            instr.constants.push(Constant {
-                                argument_pos: i as u8,
-                                size: ConstantSize::Byte,
-                                value: match registers.get16(name) {
-                                    Some(r) => *r as i64,
-                                    None => {
-                                        return Err(format!("Invalid 16 bit register \
-                                        name '{}'.", name))
-                                    }
-                                }
-                            });
-                        }
-                        ArgumentTypes::Register32 => {
-                            instr.constants.push(Constant {
-                                argument_pos: i as u8,
-                                size: ConstantSize::Byte,
-                                value: match registers.get32(name) {
-                                    Some(r) => *r as i64,
-                                    None => {
-                                        return Err(format!("Invalid 32 bit register \
-                                        name '{}'.", name))
-                                    }
-                                }
-                            });
-                        }
-                        ArgumentTypes::Register8 => {
-                            instr.constants.push(Constant {
-                                argument_pos: i as u8,
-                                size: ConstantSize::Byte,
-                                value: match registers.get8(name) {
-                                    Some(r) => *r as i64,
-                                    None => {
-                                        return Err(format!("Invalid 8 bit register \
-                                        name '{}'.", name))
-                                    }
-                                }
-                            });
-                        }
-                        _ => unexpected_node!(arg)
-                    }
-                }
-                _ => unexpected_node!(arg)
-            }
+            self.resolve_instruction(arg, &mut instr, &expected_argument, i, current_label)?;
         }
 
         match self.sections.get_mut(&self.current_section) {
