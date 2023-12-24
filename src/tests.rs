@@ -23,6 +23,7 @@ fn recursive_define() {
     let instr = &obj.sections["text"].instructions[0];
 
     assert_eq!(instr.constants.len(), 2);
+    assert_eq!(instr.references.len(), 0);
     assert_eq!(instr.constants[0], Constant {
         argument_pos: 0,
         size: crate::objgen::ConstantSize::DoubleWord,
