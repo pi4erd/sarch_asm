@@ -332,7 +332,7 @@ impl ObjectLabelSymbol {
  * 0 - 1: size
  * 1 - <>: name
  */
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BinaryReference {
     pub rf: String,
     pub size: ConstantSize
@@ -379,7 +379,7 @@ impl BinaryReference {
  * 0 - 1: size
  * 1 - 9: value
  */
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BinaryConstant {
     pub size: ConstantSize,
     pub value: i64
@@ -414,7 +414,7 @@ impl BinaryConstant {
  * 0 - 1: Type (0 is const, 1 is ref)
  * <data>
  */
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BinaryUnit {
     pub reference: Option<BinaryReference>,
     pub constant: Option<BinaryConstant>

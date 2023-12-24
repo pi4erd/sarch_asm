@@ -1,6 +1,55 @@
 #[cfg(test)]
 
 #[test]
+fn label_defbyte() {
+    use crate::{objgen::ObjectFormat, linker::Linker};
+
+    let code = ".section \"text\"
+    
+    label1:
+    nop
+    nop
+    label2:
+    nop
+    nop
+    label3:
+    nop
+    nop
+    
+    .section \"data\"
+    .db label1
+    .dw label2
+    .dd label3
+
+    .section \"rodata\"
+    ";
+
+    let tokens = super::lex(code, false);
+    let node = super::parse(tokens, false).unwrap();
+    let mut obj = ObjectFormat::new();
+    obj.load_parser_node(&node).unwrap();
+
+    let mut linker = Linker::new();
+    linker.load_symbols(obj).unwrap();
+
+    let binary = linker.generate_binary(None).unwrap();
+    let mut bin_check: Vec<u8> = vec![
+        0, 0, 0, 0, 0, 0, // nops
+    ];
+    while bin_check.len() < 256 {
+        bin_check.push(0);
+    }
+    bin_check.append(&mut vec![0, 2, 0, 4, 0, 0, 0]);
+    while bin_check.len() < 512 {
+        bin_check.push(0);
+    }
+
+    assert_eq!(bin_check.len(), 512);
+    assert_eq!(binary.len(), 512);
+    assert_eq!(binary, bin_check);
+}
+
+#[test]
 fn recursive_define() {
     use crate::objgen::{ObjectFormat, Constant};
 
