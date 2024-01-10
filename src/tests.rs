@@ -79,3 +79,30 @@ fn recursive_define() {
         value: 12
     })
 }
+
+#[test]
+fn infinite_define() {
+    use crate::objgen::ObjectFormat;
+    let code = ".section \"text\"
+    .define A B
+    .define B A
+    
+    start:
+        loadid A r0
+    ; Basically, because B<->A, should detect 100+ loops and then return error
+    ; That's why the test is like this
+
+    .section \"data\"
+    .section \"rodata\"
+    ";
+    let tokens = super::lex(code, false);
+    let node = super::parse(tokens, false).unwrap();
+    let mut obj = ObjectFormat::new();
+    let res = obj.load_parser_node(&node);
+
+    if let Err(_) = res {
+        return;
+    } else {
+        panic!("Test failed! Defines should be infinite!");
+    }
+}
