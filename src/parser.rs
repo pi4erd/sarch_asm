@@ -207,53 +207,65 @@ pub struct Parser {
 
 impl Parser {
     pub fn new() -> Self {
-        Self { root: ParserNode::new(), last_label: "".to_string() }
+        Self { 
+            root: ParserNode::new(),
+            last_label: "".to_string()
+        }
     }
 
     pub fn parse(&mut self, tokens: &Vec<Token<LexerToken>>) -> Result<&ParserNode, String> {
         let mut iterator = tokens.iter();
         while let Some(token) = iterator.next() {
-            match token.kind { // Highest level match
-                LexerToken::CompilerInstruction => {
-                    let instruction = Parser::parse_compiler_instruction(token, &mut iterator)?;
-                    self.root.children.push(instruction);
-                }
-                LexerToken::Identifier => {
-                    let instruction = Parser::parse_instruction(token, &mut iterator)?;
-                    self.root.children.push(instruction);
-                }
-                LexerToken::Label => {
-                    let txt: &str = &token.text[..token.text.len() - 1];
-
-                    let label_text: String;
-
-                    if txt.starts_with('@') {
-                        label_text = self.last_label.clone() + txt;
-                    } else {
-                        label_text = txt.to_string();
-                        self.last_label = label_text.clone();
-                    }
-
-                    let node = ParserNode {
-                        node_type: NodeType::Label(label_text),
-                        children: Vec::new()
-                    };
-
-                    self.root.children.push(node);
-                }
-                LexerToken::Newline => {}
-                LexerToken::Comment => {}
-                _ => returnerr!(token)
-            }
+            match self.parse_top_level(token, &mut iterator)? {
+                Some(n) => self.root.children.push(n),
+                None => {}
+            };
         }
 
         Ok(&self.root)
     }
 
-    fn parse_instruction<'a>(current_token: &Token<'a, LexerToken>,
-        tokens: &mut core::slice::Iter<'a, Token<'a, LexerToken>>)
-        -> Result<ParserNode, String>
-    {
+    fn parse_top_level<'a>(
+        &mut self,
+        token: &Token<'a, LexerToken>,
+        iterator: &mut core::slice::Iter<'a, Token<'a, LexerToken>>
+    ) -> Result<Option<ParserNode>, String> {
+        match token.kind { // Highest level match
+            LexerToken::CompilerInstruction => {
+                Ok(Some(self.parse_compiler_instruction(token, iterator)?))
+            }
+            LexerToken::Identifier => {
+                Ok(Some(self.parse_instruction(token, iterator)?))
+            }
+            LexerToken::Label => {
+                let txt: &str = &token.text[..token.text.len() - 1];
+
+                let label_text: String;
+
+                if txt.starts_with('@') {
+                    label_text = self.last_label.clone() + txt;
+                } else {
+                    label_text = txt.to_string();
+                    self.last_label = label_text.clone();
+                }
+
+                let node = ParserNode {
+                    node_type: NodeType::Label(label_text),
+                    children: Vec::new()
+                };
+
+                Ok(Some(node))
+            }
+            LexerToken::Newline => { Ok(None) }
+            _ => returnerr!(token)
+        }
+    }
+
+    fn parse_instruction<'a>(
+        &mut self,
+        current_token: &Token<'a, LexerToken>,
+        tokens: &mut core::slice::Iter<'a, Token<'a, LexerToken>>
+    ) -> Result<ParserNode, String> {
         let mut node = ParserNode {
             node_type: NodeType::Instruction(current_token.text.to_string()),
             children: Vec::new()
@@ -266,8 +278,8 @@ impl Parser {
 
         let mut argc = 0;
 
-        while token.kind != LexerToken::Newline && token.kind != LexerToken::Comment && argc < 2 {
-            let nd = Parser::parse_expression(token, tokens, true, false)?;
+        while token.kind != LexerToken::Newline && argc < 2 {
+            let nd = self.parse_expression(token, tokens, true, false)?;
 
             node.children.push(nd);
 
@@ -278,10 +290,11 @@ impl Parser {
         Ok(node)
     }
 
-    fn parse_compiler_instruction<'a>(current_token: &Token<'a, LexerToken>,
-        tokens: &mut core::slice::Iter<'a, Token<'a, LexerToken>>)
-        -> Result<ParserNode, String>
-    {
+    fn parse_compiler_instruction<'a>(
+        &mut self,
+        current_token: &Token<'a, LexerToken>,
+        tokens: &mut core::slice::Iter<'a, Token<'a, LexerToken>>
+    ) -> Result<ParserNode, String> {
         let mut node = ParserNode {
             node_type: NodeType::CompilerInstruction(
                 current_token.text[1..current_token.text.len()].to_string()
@@ -291,8 +304,8 @@ impl Parser {
 
         let mut token = unwrap_from_option!(tokens.next());
 
-        while token.kind != LexerToken::Newline && token.kind != LexerToken::Comment {
-            let nd = Parser::parse_expression(token, tokens, false, true)?;
+        while token.kind != LexerToken::Newline {
+            let nd = self.parse_expression(token, tokens, false, true)?;
 
             node.children.push(nd);
 
@@ -302,12 +315,12 @@ impl Parser {
         Ok(node)
     }
 
-    fn parse_expression<'a>(current_token: &Token<'a, LexerToken>,
+    fn parse_expression<'a>(
+        &mut self,
+        current_token: &Token<'a, LexerToken>,
         tokens: &mut core::slice::Iter<'a, Token<'a, LexerToken>>,
         use_registers: bool, str_available: bool
-    )
-        -> Result<ParserNode, String>
-    {
+    ) -> Result<ParserNode, String> {
         let rgs = Registers::new();
         match current_token.kind {
             LexerToken::Integer => {
@@ -356,11 +369,11 @@ impl Parser {
             LexerToken::LParen => { // Used for creating expressions
                 let mut next = unwrap_from_option!(tokens.next());
 
-                let lhs = Parser::parse_expression(next, tokens, use_registers, str_available)?;
+                let lhs = self.parse_expression(next, tokens, use_registers, str_available)?;
                 next = unwrap_from_option!(tokens.next());
                 let operator = next.clone();
                 next = unwrap_from_option!(tokens.next());
-                let rhs = Parser::parse_expression(next, tokens, use_registers, str_available)?;
+                let rhs = self.parse_expression(next, tokens, use_registers, str_available)?;
 
                 let node = ParserNode {
                     node_type: match operator.kind {
@@ -413,7 +426,7 @@ impl Parser {
             }
             LexerToken::Minus => {
                 let next = unwrap_from_option!(tokens.next());
-                let p_node = Parser::parse_expression(next, tokens, use_registers, str_available)?;
+                let p_node = self.parse_expression(next, tokens, use_registers, str_available)?;
                 let node = ParserNode {
                     node_type: NodeType::Negate,
                     children: vec![p_node]
@@ -422,7 +435,7 @@ impl Parser {
             }
             LexerToken::Plus => {
                 let next = unwrap_from_option!(tokens.next());
-                let node = Parser::parse_expression(next, tokens, use_registers, str_available)?;
+                let node = self.parse_expression(next, tokens, use_registers, str_available)?;
                 Ok(node)
             }
             LexerToken::Identifier => {

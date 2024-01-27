@@ -1,3 +1,4 @@
+pub mod preprocessor;
 pub mod lexer;
 pub mod parser;
 pub mod symbols;
@@ -10,6 +11,7 @@ pub mod tests;
 use lexer::{AsmLexer, LexerToken};
 use objdump::Objdump;
 use parser::{Parser, ParserNode};
+use preprocessor::Preprocessor;
 use regex_lexer::Token;
 
 use crate::{objgen::ObjectFormat, linker::Linker};
@@ -36,6 +38,11 @@ fn print_usage(program: &str) {
     eprintln!("\t-l | --link-object\t\tAdds object file to a linker");
     eprintln!("\t     --entrypoint\t\tSpecify entrypoint of a program");
     eprintln!("\t     --link\t\t\tTreat input file as SAO and link it");
+}
+
+pub fn preprocess(code: String) -> Result<String, String> {
+    let pp = Preprocessor::new(code);
+    pp.preprocess()
 }
 
 pub fn lex(code: &str, print_tokens: bool) -> Vec<Token<'_, LexerToken>> {
@@ -193,7 +200,6 @@ fn main() -> ExitCode {
 
     if !input_is_object {
         for filepath in input_files.iter() {
-
             let code = match fs::read_to_string(filepath) {
                 Ok(s) => s,
                 Err(e) => {
@@ -201,8 +207,16 @@ fn main() -> ExitCode {
                     return ExitCode::FAILURE
                 }
             };
+
+            let new_code = match preprocess(code) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Failed to preprocess file: {e}");
+                    return ExitCode::FAILURE
+                }
+            };
             
-            let tokens = lex(&code, print_tokens);
+            let tokens = lex(&new_code, print_tokens);
 
             let node = match parse(tokens, print_ast) {
                 Ok(n) => n,
