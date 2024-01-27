@@ -110,12 +110,17 @@ impl Preprocessor {
 
                     macro_content.push(current_char);
                 }
-                ParseState::End => break 'parse_loop
+                ParseState::End => {
+                    if constructing_name || constructing_content {
+                        return Err(format!("Syntax error while parsing macro '{}'. Check for unmatched braces.", macro_name))
+                    }
+                    break 'parse_loop
+                }
             }
         }
 
-        if constructing_name || constructing_content || current_state == ParseState::End {
-            return Err(format!("Syntax error while parsing macro '{}'. Check for unmatched braces.", macro_name))
+        if current_state != ParseState::End {
+            return Err(format!("Unknown error occured while parsing macro '{}'.", macro_name))
         }
 
         Ok(Macro {
