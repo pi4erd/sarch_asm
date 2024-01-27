@@ -1,6 +1,6 @@
 [package]
 name = "sarch_asm"
-version = "0.3.4"
+version = "0.4.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -10,3 +10,4 @@ regex-lexer = "*"
 byteorder = "*"
 serde_json = "*"
 serde = { version = "*", features = ["derive"] }
+regex = "*"

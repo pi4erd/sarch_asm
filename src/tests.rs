@@ -1,5 +1,7 @@
 #[cfg(test)]
 
+use crate::preprocess;
+
 #[test]
 fn label_defbyte() {
     use crate::{objgen::ObjectFormat, linker::Linker};
@@ -24,7 +26,8 @@ fn label_defbyte() {
     .section \"rodata\"
     ";
 
-    let tokens = super::lex(code, false);
+    let code = preprocess(code.to_string()).unwrap();
+    let tokens = super::lex(&code, false);
     let node = super::parse(tokens, false).unwrap();
     let mut obj = ObjectFormat::new();
     obj.load_parser_node(&node).unwrap();
@@ -50,6 +53,65 @@ fn label_defbyte() {
 }
 
 #[test]
+fn sublabel_test() {
+    use crate::objgen::ObjectFormat;
+
+    let code = ".section \"text\"
+    
+    label1:
+    nop
+    nop
+    @sublabel:
+    nop
+    halt
+
+    label2:
+    nop
+    nop
+    @sublabel:
+    loadid @sublabel r0
+    loadid label1@sublabel r0
+    halt
+
+    .section \"data\"
+    .section \"rodata\"
+    ";
+
+    let code = preprocess(code.to_string()).unwrap();
+    let tokens = super::lex(&code, false);
+    let node = super::parse(tokens, false).unwrap();
+
+    let mut obj = ObjectFormat::new();
+    obj.load_parser_node(&node).unwrap();
+}
+
+#[test]
+fn macro_test() {
+    let code = ".section \"text\"
+
+    %macro some_macro {
+        ; macro content
+        loadid 0x00 r0
+        ; comment 2
+        loadid 0xBAD ra ; ve
+    }
+
+    %call some_macro
+    %call some_macro
+    %call some_macro
+    %call some_macro
+    %call some_macro
+
+    .section \"data\"
+    .section \"rodata\"
+    ";
+
+    let code = preprocess(code.to_string()).unwrap();
+    let tokens = super::lex(&code, false);
+    let _node = super::parse(tokens, false).unwrap();
+}
+
+#[test]
 fn recursive_define() {
     use crate::objgen::{ObjectFormat, Constant};
 
@@ -64,7 +126,9 @@ fn recursive_define() {
     .section \"data\"
     .section \"rodata\"
     ";
-    let tokens = super::lex(code, false);
+
+    let code = preprocess(code.to_string()).unwrap();
+    let tokens = super::lex(&code, false);
     let node = super::parse(tokens, false).unwrap();
     let mut obj = ObjectFormat::new();
     obj.load_parser_node(&node).unwrap();
@@ -95,7 +159,9 @@ fn infinite_define() {
     .section \"data\"
     .section \"rodata\"
     ";
-    let tokens = super::lex(code, false);
+
+    let code = preprocess(code.to_string()).unwrap();
+    let tokens = super::lex(&code, false);
     let node = super::parse(tokens, false).unwrap();
     let mut obj = ObjectFormat::new();
     let res = obj.load_parser_node(&node);
