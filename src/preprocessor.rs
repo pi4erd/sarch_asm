@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use regex::Regex;
 
 #[derive(Debug)]
@@ -41,6 +43,7 @@ impl Preprocessor {
     }
 
     fn parse_macro_definition(code: &str, start_pos: usize) -> Result<Macro, String> {
+        #[derive(PartialEq)]
         enum ParseState {
             End, Name, Content
         }
@@ -111,6 +114,10 @@ impl Preprocessor {
             }
         }
 
+        if constructing_name || constructing_content || current_state == ParseState::End {
+            return Err(format!("Syntax error while parsing macro '{}'. Check for unmatched braces.", macro_name))
+        }
+
         Ok(Macro {
             name: macro_name,
             replacement: macro_content
@@ -120,12 +127,21 @@ impl Preprocessor {
     fn find_macro_definitions(code: &str) -> Result<(Vec<Macro>, String), String> {
         let mut macros = Vec::new();
 
+        let mut macro_check: HashSet<String> = HashSet::new();
+
         let macro_rgx = Regex::new(r"\%macro").map_err(|e| format!("Regex error: {e}"))?;
         let macro_repl_rgx = Regex::new(r"\%macro\s+(\w|[_])+\s*\{(.|\s)*\}").map_err(|e| format!("Regex error: {e}"))?;
 
-        for macro_def in macro_rgx.find_iter(code) {
+        for macro_def_match in macro_rgx.find_iter(code) {
+            let macro_def = Self::parse_macro_definition(code, macro_def_match.end())?;
+
+            if macro_check.contains(&macro_def.name) {
+                return Err(format!("Redefinition of macro '{}'", macro_def.name));
+            }
+
+            macro_check.insert(macro_def.name.clone());
             macros.push(
-                Self::parse_macro_definition(code, macro_def.end())?
+                macro_def
             );
         }
 
