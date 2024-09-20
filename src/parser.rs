@@ -20,7 +20,6 @@ macro_rules! unwrap_from_option {
     }
 }
 
-// TODO: Split registers into 32, 16 and 8 bit registers for the better life
 pub struct Registers<'a> {
     registers32: HashMap<&'a str, u8>,
     registers8: HashMap<&'a str, u8>,
@@ -170,22 +169,35 @@ impl Registers<'_> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum UnaryOp {
+    Negate, Identity
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BinaryOp {
+    Addition,
+    Subtraction,
+    Multiplication,
+    Division,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExpressionType {
+    Binary(BinaryOp), Unary(UnaryOp)
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum NodeType {
     ConstInteger(i64),
     ConstFloat(f64),
-    Negate,
     Instruction(String),
     CompilerInstruction(String),
     Label(String),
     Identifier(String),
     Register(String),
     String(String),
-    Expression,
-    Addition,
-    Subtraction,
-    Multiplication,
-    Division,
-    Program
+    Expression(ExpressionType),
+    Program,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -376,18 +388,14 @@ impl Parser {
                 let rhs = self.parse_expression(next, tokens, use_registers, str_available)?;
 
                 let node = ParserNode {
-                    node_type: match operator.kind {
-                        LexerToken::Plus => NodeType::Addition,
-                        LexerToken::Minus => NodeType::Subtraction,
-                        LexerToken::Multiply => NodeType::Multiplication,
-                        LexerToken::Divide => NodeType::Division,
+                    node_type: NodeType::Expression(match operator.kind {
+                        LexerToken::Plus => ExpressionType::Binary(BinaryOp::Addition),
+                        LexerToken::Minus => ExpressionType::Binary(BinaryOp::Subtraction),
+                        LexerToken::Multiply => ExpressionType::Binary(BinaryOp::Multiplication),
+                        LexerToken::Divide => ExpressionType::Binary(BinaryOp::Division),
                         _ => returnerr!(operator)
-                    },
+                    }),
                     children: vec![lhs, rhs]
-                };
-                let result = ParserNode {
-                    node_type: NodeType::Expression,
-                    children: vec![node]
                 };
 
                 next = unwrap_from_option!(tokens.next());
@@ -395,7 +403,7 @@ impl Parser {
                 if next.kind != LexerToken::RParen {
                     returnerr!(next)
                 }
-                Ok(result)
+                Ok(node)
             }
             LexerToken::String => {
                 if !str_available {
@@ -428,15 +436,18 @@ impl Parser {
                 let next = unwrap_from_option!(tokens.next());
                 let p_node = self.parse_expression(next, tokens, use_registers, str_available)?;
                 let node = ParserNode {
-                    node_type: NodeType::Negate,
-                    children: vec![p_node]
+                    node_type: NodeType::Expression(ExpressionType::Unary(UnaryOp::Negate)),
+                    children: vec![p_node],
                 };
                 Ok(node)
             }
             LexerToken::Plus => {
                 let next = unwrap_from_option!(tokens.next());
                 let node = self.parse_expression(next, tokens, use_registers, str_available)?;
-                Ok(node)
+                Ok(ParserNode {
+                    node_type: NodeType::Expression(ExpressionType::Unary(UnaryOp::Identity)),
+                    children: vec![node],
+                })
             }
             LexerToken::Identifier => {
                 if rgs.has_key(current_token.text) {

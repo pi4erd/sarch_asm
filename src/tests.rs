@@ -172,3 +172,39 @@ fn infinite_define() {
         panic!("Test failed! Defines should be infinite!");
     }
 }
+
+#[test]
+fn expression_test() {
+    use crate::{objgen::ObjectFormat, parser::NodeType};
+
+    let code = ".section \"text\"
+    .define A 3
+    .define B (5 + 2)
+    .define C (10 * 5)
+    .define D (C * 10)
+    
+    start:
+        loadid C r0
+        loadid B r1
+        loadid (15 * 2900) r2
+        loadid (91 + B) r3
+
+        ; this won't work because expressions aren't yet implemented inside object files
+        ; loadid (start + 2) r0
+        halt
+    .section \"data\"
+    .section \"rodata\"
+    ";
+    
+    let code = preprocess(code.to_string()).unwrap();
+    let tokens = super::lex(&code, false);
+    let node = super::parse(tokens, false).unwrap();
+    
+    let mut obj = ObjectFormat::new();
+    obj.load_parser_node(&node).unwrap();
+    
+    assert_eq!(obj.defines["A"].node.node_type, NodeType::ConstInteger(3));
+    assert_eq!(obj.defines["B"].node.node_type, NodeType::ConstInteger(7));
+    assert_eq!(obj.defines["C"].node.node_type, NodeType::ConstInteger(50));
+    assert_eq!(obj.defines["D"].node.node_type, NodeType::ConstInteger(500));
+}

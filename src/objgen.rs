@@ -9,7 +9,7 @@ use std::io::{Error, Write};
 use std::{fs, io, str};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::parser::{ParserNode, NodeType, Registers};
+use crate::parser::{BinaryOp, ExpressionType, NodeType, ParserNode, Registers, UnaryOp};
 use crate::symbols::{Instructions, ArgumentTypes, Conditions};
 
 macro_rules! unexpected_node {
@@ -714,8 +714,8 @@ impl ObjectFormatHeader {
 }
 
 #[derive(Debug, Clone)]
-struct Define {
-    node: ParserNode
+pub struct Define {
+    pub node: ParserNode
 }
 
 /**
@@ -729,7 +729,7 @@ struct Define {
 #[derive(Debug, Clone)]
 pub struct ObjectFormat {
     pub header: ObjectFormatHeader,
-    defines: HashMap<String, Define>,
+    pub defines: HashMap<String, Define>,
     pub sections: HashMap<String, SectionData>,
     compiler_instructions: HashMap<String, fn(&mut Self, &Vec<ParserNode>) -> Result<(), String>>,
     current_section: String
@@ -739,7 +739,82 @@ const DEFAULT_SECTION_NAME: &str = "text";
 
 impl ObjectFormat {
     fn evaluate_expression(&self, _expr: &ParserNode) -> Result<ParserNode, String> {
-        todo!()
+        match &_expr.node_type {
+            NodeType::ConstFloat(_) => Ok(_expr.clone()),
+            NodeType::ConstInteger(_) => Ok(_expr.clone()),
+            NodeType::Identifier(name) => {
+                // Try resolve identifier
+                let opt_define_symbol = self.defines.get(name);
+
+                if let Some(define_symbol) = opt_define_symbol {
+                    return self.define_resolve(define_symbol, 0);
+                } else {
+                    return Err(format!("Failed to resolve identifier '{name}'."))
+                }
+            }
+            NodeType::Expression(ExpressionType::Binary(operation)) => {                
+                let lhs = &_expr.children[0];
+                let rhs = &_expr.children[1];
+                
+                let lhs = self.evaluate_expression(lhs)?;
+                let rhs = self.evaluate_expression(rhs)?;
+                match (&lhs.node_type, &rhs.node_type) {
+                    (NodeType::ConstInteger(n), NodeType::ConstInteger(m)) => {
+                        return Ok(ParserNode {
+                            node_type: NodeType::ConstInteger(match operation {
+                                BinaryOp::Addition => n + m,
+                                BinaryOp::Subtraction => n - m,
+                                BinaryOp::Multiplication => n * m,
+                                BinaryOp::Division => n / m,
+                            }),
+                            children: vec![],
+                        })
+                    }
+                    (NodeType::ConstFloat(n), NodeType::ConstFloat(m)) => {
+                        return Ok(ParserNode {
+                            node_type: NodeType::ConstFloat(match operation {
+                                BinaryOp::Addition => n + m,
+                                BinaryOp::Subtraction => n - m,
+                                BinaryOp::Multiplication => n * m,
+                                BinaryOp::Division => n / m,
+                            }),
+                            children: vec![],
+                        })
+                    }
+                    _ => return Err(format!("Cannod add {:?} and {:?}.", lhs.node_type, rhs.node_type))
+                }
+            }
+            NodeType::Expression(ExpressionType::Unary(operation)) => {
+                match operation {
+                    UnaryOp::Identity => {
+                        return Ok(_expr.children[0].clone())
+                    }
+                    UnaryOp::Negate => {
+                        let child = &_expr.children[0];
+                        let result = self.evaluate_expression(child)?;
+                        // NOTE: Node type shouldn't be Expression after evaluating!
+                        match result.node_type {
+                            NodeType::ConstInteger(n) => {
+                                Ok(ParserNode {
+                                    node_type: NodeType::ConstInteger(-n),
+                                    children: vec![],
+                                })
+                            }
+                            NodeType::ConstFloat(n) => {
+                                Ok(ParserNode {
+                                    node_type: NodeType::ConstFloat(-n),
+                                    children: vec![],
+                                })
+                            }
+                            _ => Err(format!("Cannot negate node {:?}", result.node_type))
+                        }
+                    }
+                }
+            }
+            _ => {
+                return Err(format!("Not an expression! Compiler bug?"))
+            }
+        }
     }
 
     // Compiler instructions
@@ -785,7 +860,7 @@ impl ObjectFormat {
             _ => wrong_argument!(name_node, NodeType::String(String::new()))
         };
         match &data.node_type {
-            NodeType::Expression => {
+            NodeType::Expression(_) => {
                 let n = self.evaluate_expression(data)?;
                 self.defines.insert(name.clone(), Define {
                     node: n
@@ -853,9 +928,7 @@ impl ObjectFormat {
                         });
                     }
                 }
-                NodeType::Negate | NodeType::Expression => {
-                    todo!()
-                }
+                NodeType::Expression(_) => todo!(),
                 NodeType::String(some_str) => {
                     for b in some_str.bytes() {
                         sec.binary_data.push(BinaryUnit {
@@ -989,7 +1062,7 @@ impl ObjectFormat {
                         })
                     });
                 }
-                NodeType::Negate | NodeType::Expression => {
+                NodeType::Expression(_) => {
                     todo!()
                 }
                 NodeType::String(some_str) => {
@@ -1048,9 +1121,7 @@ impl ObjectFormat {
                         })
                     });
                 }
-                NodeType::Negate | NodeType::Expression => {
-                    todo!()
-                }
+                NodeType::Expression(_) => todo!(),
                 NodeType::String(some_str) => {
                     for b in some_str.bytes() {
                         sec.binary_data.push(BinaryUnit {
@@ -1208,12 +1279,30 @@ version! It may not be compatible!");
         instr(self, children)
     }
 
+    // function-like
+    fn define_resolve(&self, define_symbol: &Define, depth: i32) -> Result<ParserNode, String> {
+        match &define_symbol.node.node_type {
+            NodeType::ConstFloat(_) | NodeType::ConstInteger(_) => Ok(define_symbol.node.clone()),
+            NodeType::Identifier(iden) => {
+                if depth > 100 {
+                    return Err(format!("Max define depth of 100 reached!"))
+                }
+                if self.defines.contains_key(iden) {
+                    return Ok(self.define_resolve(&self.defines[iden], depth + 1)?)
+                }
+
+                return Err(format!("Failed to resolve define with name '{iden}'."))
+            }
+            _ => todo!("Add useful error message")
+        }
+    }
+
     fn resolve_define(&self, arg: usize, instr: &mut InstructionData, expected_argument: &ArgumentTypes, define_symbol: &Define, depth: i32)
         -> Result<(), String>
     {
         if let NodeType::Identifier(iden) = &define_symbol.node.node_type {
             if depth > 100 {
-                return Err(format!("Looping defines detected!"))
+                return Err(format!("Max define depth of 100 reached!"))
             }
             if self.defines.contains_key(iden) {
                 self.resolve_define(
@@ -1289,7 +1378,55 @@ version! It may not be compatible!");
         let conditions = Conditions::new();
         let registers = Registers::new();
 
-        match &arg.node_type { // TODO: Implement expressions
+        match &arg.node_type {
+            NodeType::Expression(_) => {
+                let expression_result = self.evaluate_expression(&arg)?;
+
+                match expression_result.node_type {
+                    NodeType::ConstFloat(n) => {
+                        match expected_argument {
+                            ArgumentTypes::FloatingPoint |
+                            ArgumentTypes::Immediate32 => {
+                                instr.constants.push(Constant {
+                                    argument_pos: index as u8,
+                                    size: ConstantSize::DoubleWord,
+                                    value: n.to_bits() as i64
+                                });
+                            }
+                            _ => unexpected_node!(arg)
+                        }
+                    }
+                    NodeType::ConstInteger(n) => {
+                        match expected_argument {
+                            ArgumentTypes::AbsPointer |
+                            ArgumentTypes::RelPointer |
+                            ArgumentTypes::Immediate32 => {
+                                instr.constants.push(Constant {
+                                    argument_pos: index as u8,
+                                    size: ConstantSize::DoubleWord,
+                                    value: n as i64
+                                });
+                            }
+                            ArgumentTypes::Immediate16 => {
+                                instr.constants.push(Constant {
+                                    argument_pos: index as u8,
+                                    size: ConstantSize::Word,
+                                    value: (n & 0xFFFF) as i64
+                                });
+                            }
+                            ArgumentTypes::Immediate8 => {
+                                instr.constants.push(Constant {
+                                    argument_pos: index as u8,
+                                    size: ConstantSize::Byte,
+                                    value: (n & 0xFF) as i64
+                                });
+                            }
+                            _ => unexpected_node!(arg)
+                        }
+                    }
+                    _ => panic!("Compiler error: expression evaluated some garbage")
+                }
+            }
             NodeType::Identifier(identifier_name) => {
                 if self.defines.contains_key(identifier_name) {
                     let define_symbol = &self.defines[identifier_name];
