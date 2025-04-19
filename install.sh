@@ -9,5 +9,5 @@ cargo build --release
 
 echo "Trying to install in $INSTALL_DIR"
 echo "Requesting permission..."
-sudo cp ./target/release/sarch_asm $INSTALL_DIR
+sudo install ./target/release/sarch_asm $INSTALL_DIR
 

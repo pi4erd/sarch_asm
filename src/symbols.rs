@@ -149,7 +149,7 @@ impl Instructions {
         me.ilist.insert("rcmpub", Instruction { name: "rcmpub", opcode: 42, args: vec![ArgumentTypes::Register8, ArgumentTypes::Register8] });
         me.ilist.insert("rcmpuw", Instruction { name: "rcmpuw", opcode: 43, args: vec![ArgumentTypes::Register16, ArgumentTypes::Register16] });
         me.ilist.insert("dsin", Instruction { name: "dsin", opcode: 44, args: vec![] });
-        me.ilist.insert("esin", Instruction { name: "icmesinpuw", opcode: 45, args: vec![] });
+        me.ilist.insert("esin", Instruction { name: "esin", opcode: 45, args: vec![] });
         me.ilist.insert("ldptrd", Instruction { name: "ldptrd", opcode: 46, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register32] });
         me.ilist.insert("ldptrb", Instruction { name: "ldptrb", opcode: 47, args: vec![ArgumentTypes::Register32, ArgumentTypes::Register8] });
 

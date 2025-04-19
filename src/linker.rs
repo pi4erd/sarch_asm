@@ -6,11 +6,16 @@ use serde::{Serialize, Deserialize};
 macro_rules! calculate_alignment {
     ($num:expr, $alignment:expr) => {
         // TODO: Optimize macro
-        if $num > ($num / $alignment) * $alignment {
+        if $num % $alignment != 0 {
             ($num / $alignment) * $alignment + $alignment
         } else {
-            ($num / $alignment) * $alignment
+            $num
         }
+        // if $num > ($num / $alignment) * $alignment {
+        //     ($num / $alignment) * $alignment + $alignment
+        // } else {
+        //     ($num / $alignment) * $alignment
+        // }
     };
 }
 
@@ -141,6 +146,16 @@ impl Linker {
         Ok(())
     }
 
+    pub fn list_resolve_sections(&self) -> Result<String, String> {
+        let mut result = String::from("Sections:\n");
+        for (sec_name, _) in self.section_symbols.iter() {
+            let secoff = self.get_section_offset(sec_name)?;
+            result += &format!("  {} =>\t0x{:08x}\n", sec_name, secoff);
+        }
+
+        Ok(result)
+    }
+
     fn find_section_with_label(&self, label: &str) -> Option<&str> {
         let mut sec_iter = self.section_symbols.iter();
 
@@ -176,6 +191,8 @@ impl Linker {
             };
 
             offset += section.get_binary_size() as u64;
+            let alignment = self.link_structure.get_section(&link_section.name).unwrap().alignment;
+            offset = calculate_alignment!(offset, alignment);
         }
 
         let alignment = self.link_structure.get_section(section_name)

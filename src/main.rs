@@ -93,6 +93,7 @@ fn main() -> ExitCode {
     let mut input_is_object = false;
     let mut keep_object = false;
     let mut disassemble = false;
+    let mut print_resolve_sections = false;
     let mut entrypoint: Option<String> = None;
     // ############
 
@@ -174,6 +175,13 @@ fn main() -> ExitCode {
                 // May be useful trying to compile multiple object files
                 input_is_object = true;
                 link_object = true;
+            }
+            "--resolve-sections" => {
+                // Prints all sections and their corresponding addresses
+                // for binary files
+                input_is_object = true;
+                link_object = true;
+                print_resolve_sections = true;
             }
             "--entrypoint" => {
                 let labelname = match args.next() {
@@ -361,6 +369,13 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE
             }
         };
+
+        if print_resolve_sections {
+            println!("{}", match linker.list_resolve_sections() {
+                Ok(s) => s,
+                Err(e) => format!("Unable to list sections: {e}"),
+            });
+        }
     }
     
     return ExitCode::SUCCESS

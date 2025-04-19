@@ -12,6 +12,7 @@ pub struct Preprocessor {
     code: String,
 }
 
+// Preprocessor directive prefix: '%'
 impl Preprocessor {
     pub fn new(code: String) -> Self {
         Self { code }
@@ -171,9 +172,30 @@ impl Preprocessor {
         Ok(result)
     }
 
+    fn process_includes(mut code: String) -> Result<String, String> {
+        let include_regex: Regex = Regex::new(r#"%include\s"(.+)""#).unwrap();
+        let new_code = code.clone();
+        let captures = include_regex.captures_iter(&new_code);
+
+        for cap in captures {
+            let filename = cap.get(1).unwrap().as_str();
+            let full_statement = cap.get(0).unwrap().as_str();
+
+            let file_bytes = std::fs::read(filename)
+                .map_err(|e| format!("Failed to read file included '{filename}': {e}"))?;
+            let file_text = String::from_utf8(file_bytes)
+                .map_err(|e| format!("Failed to convert to utf8: {e}"))?;
+
+            code = code.replace(full_statement, &format!("{}\n", file_text));
+        }
+
+        Ok(code)
+    }
+
     pub fn preprocess(mut self) -> Result<String, String> {
         self.code = Self::rid_comments(self.code);
-        
+        self.code = Self::process_includes(self.code)?;
+
         let (macros, code) = Self::find_macro_definitions(&self.code)?;
         self.code = code;
 

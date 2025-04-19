@@ -82,7 +82,12 @@ impl Reference {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConstantSize {
-    Byte, Word, DoubleWord
+    /// 1 byte
+    Byte,
+    /// 2 bytes
+    Word,
+    /// 4 bytes
+    DoubleWord,
 }
 
 impl ConstantSize {
@@ -270,7 +275,7 @@ impl InstructionData {
                             result += &format!("{} ", name);
                         }
                         _ => {
-                            result += &format!("{:#04x} ({:?}) ", c.value, c.size);
+                            result += &format!("{:#04x} ({:?}) ", c.value as u32, c.size);
                         }
                     }
                     continue

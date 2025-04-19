@@ -208,3 +208,16 @@ fn expression_test() {
     assert_eq!(obj.defines["C"].node.node_type, NodeType::ConstInteger(50));
     assert_eq!(obj.defines["D"].node.node_type, NodeType::ConstInteger(500));
 }
+
+#[test]
+fn include_test() {
+    let code = r#"%include "tests/test_include.txt"
+    "#;
+
+    let code = preprocess(code.to_string()).unwrap();
+
+    assert_eq!(
+        String::from_utf8(std::fs::read("tests/test_include.txt").unwrap()).unwrap().trim(),
+        code.trim(),
+    );
+}
