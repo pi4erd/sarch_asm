@@ -27,7 +27,7 @@ fn label_defbyte() {
     ";
 
     let code = preprocess(code.to_string()).unwrap();
-    let tokens = super::lex(&code, false);
+    let tokens = super::lex(&code, false).unwrap();
     let node = super::parse(tokens, false).unwrap();
     let mut obj = ObjectFormat::new();
     obj.load_parser_node(&node).unwrap();
@@ -78,7 +78,7 @@ fn sublabel_test() {
     ";
 
     let code = preprocess(code.to_string()).unwrap();
-    let tokens = super::lex(&code, false);
+    let tokens = super::lex(&code, false).unwrap();
     let node = super::parse(tokens, false).unwrap();
 
     let mut obj = ObjectFormat::new();
@@ -107,7 +107,7 @@ fn macro_test() {
     ";
 
     let code = preprocess(code.to_string()).unwrap();
-    let tokens = super::lex(&code, false);
+    let tokens = super::lex(&code, false).unwrap();
     let _node = super::parse(tokens, false).unwrap();
 }
 
@@ -128,7 +128,7 @@ fn recursive_define() {
     ";
 
     let code = preprocess(code.to_string()).unwrap();
-    let tokens = super::lex(&code, false);
+    let tokens = super::lex(&code, false).unwrap();
     let node = super::parse(tokens, false).unwrap();
     let mut obj = ObjectFormat::new();
     obj.load_parser_node(&node).unwrap();
@@ -161,7 +161,7 @@ fn infinite_define() {
     ";
 
     let code = preprocess(code.to_string()).unwrap();
-    let tokens = super::lex(&code, false);
+    let tokens = super::lex(&code, false).unwrap();
     let node = super::parse(tokens, false).unwrap();
     let mut obj = ObjectFormat::new();
     let res = obj.load_parser_node(&node);
@@ -197,7 +197,7 @@ fn expression_test() {
     ";
     
     let code = preprocess(code.to_string()).unwrap();
-    let tokens = super::lex(&code, false);
+    let tokens = super::lex(&code, false).unwrap();
     let node = super::parse(tokens, false).unwrap();
     
     let mut obj = ObjectFormat::new();
@@ -220,4 +220,36 @@ fn include_test() {
         String::from_utf8(std::fs::read("tests/test_include.txt").unwrap()).unwrap().trim(),
         code.trim(),
     );
+}
+
+#[test]
+fn lex_test() {
+    use crate::lexer::LexerTokenType;
+
+    let code = ".define ABC 0xFE
+    start: ; hello world this is a comment
+        loadid C r0
+        loadid (91 + B) r3 ;fgewt
+        jmp start
+    string: .db \"Hello, world!\"
+    ";
+    
+    let tokens = crate::lexer::tokenize(code).unwrap();
+
+    assert_eq!(
+        tokens.into_iter().map(|t| t.kind).collect::<Vec<_>>(),
+        vec![
+            LexerTokenType::CompilerInstruction, LexerTokenType::Identifier, LexerTokenType::Integer, LexerTokenType::Newline,
+
+            LexerTokenType::Label, LexerTokenType::Newline,
+
+            LexerTokenType::Identifier, LexerTokenType::Identifier, LexerTokenType::Identifier, LexerTokenType::Newline,
+
+            LexerTokenType::Identifier, LexerTokenType::LParen, LexerTokenType::Integer, LexerTokenType::Plus,
+            LexerTokenType::Identifier, LexerTokenType::RParen, LexerTokenType::Identifier, LexerTokenType::Newline,
+
+            LexerTokenType::Identifier, LexerTokenType::Identifier, LexerTokenType::Newline,
+            LexerTokenType::Label, LexerTokenType::CompilerInstruction, LexerTokenType::String, LexerTokenType::Newline,
+        ]
+    )
 }

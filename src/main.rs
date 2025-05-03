@@ -8,11 +8,10 @@ pub mod objdump;
 
 pub mod tests;
 
-use lexer::{AsmLexer, LexerToken};
+use lexer::{LexerResult, LexerToken};
 use objdump::Objdump;
 use parser::{Parser, ParserNode};
 use preprocessor::Preprocessor;
-use regex_lexer::Token;
 
 use crate::{objgen::ObjectFormat, linker::Linker};
 
@@ -45,9 +44,8 @@ pub fn preprocess(code: String) -> Result<String, String> {
     pp.preprocess()
 }
 
-pub fn lex(code: &str, print_tokens: bool) -> Vec<Token<'_, LexerToken>> {
-    let lexer = AsmLexer::new();
-    let tokens = lexer.tokenize(&code);
+pub fn lex(code: &str, print_tokens: bool) -> LexerResult<Vec<LexerToken>> {
+    let tokens = lexer::tokenize(code)?;
 
     if print_tokens {
         for token in tokens.iter() {
@@ -55,10 +53,10 @@ pub fn lex(code: &str, print_tokens: bool) -> Vec<Token<'_, LexerToken>> {
         }
     }
 
-    tokens
+    Ok(tokens)
 }
 
-pub fn parse(tokens: Vec<Token<'_, LexerToken>>, print_ast: bool) -> Result<ParserNode, String> {
+pub fn parse(tokens: Vec<LexerToken>, print_ast: bool) -> Result<ParserNode, String> {
     let mut parser = Parser::new();
     match parser.parse(&tokens) {
         Ok(n) => n,
@@ -224,12 +222,18 @@ fn main() -> ExitCode {
                 }
             };
             
-            let tokens = lex(&new_code, print_tokens);
+            let tokens = match lex(&new_code, print_tokens) {
+                Ok(tokens) => tokens,
+                Err(e) => {
+                    eprintln!("Error occured while lexing: {e}");
+                    return ExitCode::FAILURE;
+                }
+            };
 
             let node = match parse(tokens, print_ast) {
                 Ok(n) => n,
                 Err(e) => {
-                    eprintln!("{}", e);
+                    eprintln!("Error occured while parsing: {}", e);
                     return ExitCode::FAILURE
                 }
             };
