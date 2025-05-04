@@ -2,9 +2,9 @@ use crate::lexer::{LexerToken, LexerTokenType};
 use std::collections::HashMap;
 
 macro_rules! returnerr {
-    ($token:expr) => {
-        return Err(format!("Unexpected token {:?} \"{}\" at line {} column {}", 
-            $token.kind, $token.slice, $token.line, $token.column))
+    ($token:expr, $filename:expr) => {
+        return Err(format!("Unexpected token {:?} \"{}\" in {}:{}:{}", 
+            $token.kind, $token.slice, $filename, $token.line, $token.column))
     };
 }
 
@@ -213,18 +213,23 @@ impl ParserNode {
 
 pub struct Parser {
     pub root: ParserNode,
-    last_label: String
+    pub filename: String,
+    last_label: String,
 }
 
 impl Parser {
     pub fn new() -> Self {
         Self { 
             root: ParserNode::new(),
-            last_label: "".to_string()
+            filename: String::new(),
+            last_label: String::new(),
         }
     }
 
-    pub fn parse(&mut self, tokens: &Vec<LexerToken>) -> Result<&ParserNode, String> {
+    // TODO: Add token lookahead (peekable)
+    pub fn parse(&mut self, filename: &str, tokens: &Vec<LexerToken>) -> Result<&ParserNode, String> {
+        self.filename = filename.to_string();
+
         let mut iterator = tokens.iter();
         while let Some(token) = iterator.next() {
             match self.parse_top_level(token, &mut iterator)? {
@@ -268,7 +273,7 @@ impl Parser {
                 Ok(Some(node))
             }
             LexerTokenType::Newline => { Ok(None) }
-            _ => returnerr!(token)
+            _ => returnerr!(token, self.filename)
         }
     }
 
@@ -287,15 +292,24 @@ impl Parser {
             None => return Ok(node)
         };
 
-        let mut argc = 0;
+        if token.kind == LexerTokenType::Newline {
+            return Ok(node)
+        }
 
-        while token.kind != LexerTokenType::Newline && argc < 2 {
+        loop {
             let nd = self.parse_expression(token, tokens, true, false)?;
-
             node.children.push(nd);
 
             token = unwrap_from_option!(tokens.next());
-            argc += 1;
+
+            if token.kind != LexerTokenType::Comma {
+                if token.kind != LexerTokenType::Newline {
+                    returnerr!(token, self.filename)
+                }
+                break;
+            }
+
+            token = unwrap_from_option!(tokens.next());
         }
 
         Ok(node)
@@ -392,7 +406,7 @@ impl Parser {
                         LexerTokenType::Minus => ExpressionType::Binary(BinaryOp::Subtraction),
                         LexerTokenType::Multiply => ExpressionType::Binary(BinaryOp::Multiplication),
                         LexerTokenType::Divide => ExpressionType::Binary(BinaryOp::Division),
-                        _ => returnerr!(operator)
+                        _ => returnerr!(operator, self.filename)
                     }),
                     children: vec![lhs, rhs]
                 };
@@ -400,7 +414,7 @@ impl Parser {
                 next = unwrap_from_option!(tokens.next());
 
                 if next.kind != LexerTokenType::RParen {
-                    returnerr!(next)
+                    returnerr!(next, self.filename)
                 }
                 Ok(node)
             }
@@ -469,7 +483,7 @@ impl Parser {
                 };
                 Ok(node)
             }
-            _ => returnerr!(current_token)
+            _ => returnerr!(current_token, self.filename)
         }
     }
 }

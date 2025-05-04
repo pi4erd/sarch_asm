@@ -56,9 +56,9 @@ pub fn lex(code: &str, print_tokens: bool) -> LexerResult<Vec<LexerToken>> {
     Ok(tokens)
 }
 
-pub fn parse(tokens: Vec<LexerToken>, print_ast: bool) -> Result<ParserNode, String> {
+pub fn parse(filename: &str, tokens: Vec<LexerToken>, print_ast: bool) -> Result<ParserNode, String> {
     let mut parser = Parser::new();
-    match parser.parse(&tokens) {
+    match parser.parse(filename, &tokens) {
         Ok(n) => n,
         Err(err) => {
             return Err(format!("Error occured while parsing:\n{}", err))
@@ -230,7 +230,7 @@ fn main() -> ExitCode {
                 }
             };
 
-            let node = match parse(tokens, print_ast) {
+            let node = match parse(&filepath, tokens, print_ast) {
                 Ok(n) => n,
                 Err(e) => {
                     eprintln!("Error occured while parsing: {}", e);

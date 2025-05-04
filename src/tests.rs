@@ -28,7 +28,7 @@ fn label_defbyte() {
 
     let code = preprocess(code.to_string()).unwrap();
     let tokens = super::lex(&code, false).unwrap();
-    let node = super::parse(tokens, false).unwrap();
+    let node = super::parse("test", tokens, false).unwrap();
     let mut obj = ObjectFormat::new();
     obj.load_parser_node(&node).unwrap();
 
@@ -69,8 +69,8 @@ fn sublabel_test() {
     nop
     nop
     @sublabel:
-    loadid @sublabel r0
-    loadid label1@sublabel r0
+    loadid @sublabel, r0
+    loadid label1@sublabel, r0
     halt
 
     .section \"data\"
@@ -79,7 +79,7 @@ fn sublabel_test() {
 
     let code = preprocess(code.to_string()).unwrap();
     let tokens = super::lex(&code, false).unwrap();
-    let node = super::parse(tokens, false).unwrap();
+    let node = super::parse("test", tokens, false).unwrap();
 
     let mut obj = ObjectFormat::new();
     obj.load_parser_node(&node).unwrap();
@@ -91,9 +91,9 @@ fn macro_test() {
 
     %macro some_macro {
         ; macro content
-        loadid 0x00 r0
+        loadid 0x00, r0
         ; comment 2
-        loadid 0xBAD ra ; ve
+        loadid 0xBAD, ra ; ve
     }
 
     %call some_macro
@@ -108,7 +108,7 @@ fn macro_test() {
 
     let code = preprocess(code.to_string()).unwrap();
     let tokens = super::lex(&code, false).unwrap();
-    let _node = super::parse(tokens, false).unwrap();
+    let _node = super::parse("test", tokens, false).unwrap();
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn recursive_define() {
     .define B A
     
     start:
-    loadid B r0
+    loadid B, r0
     halt
     
     .section \"data\"
@@ -129,7 +129,7 @@ fn recursive_define() {
 
     let code = preprocess(code.to_string()).unwrap();
     let tokens = super::lex(&code, false).unwrap();
-    let node = super::parse(tokens, false).unwrap();
+    let node = super::parse("test", tokens, false).unwrap();
     let mut obj = ObjectFormat::new();
     obj.load_parser_node(&node).unwrap();
 
@@ -152,7 +152,7 @@ fn infinite_define() {
     .define B A
     
     start:
-        loadid A r0
+        loadid A, r0
     ; Basically, because B<->A, should detect 100+ loops and then return error
     ; That's why the test is like this
 
@@ -162,7 +162,7 @@ fn infinite_define() {
 
     let code = preprocess(code.to_string()).unwrap();
     let tokens = super::lex(&code, false).unwrap();
-    let node = super::parse(tokens, false).unwrap();
+    let node = super::parse("test", tokens, false).unwrap();
     let mut obj = ObjectFormat::new();
     let res = obj.load_parser_node(&node);
 
@@ -184,13 +184,13 @@ fn expression_test() {
     .define D (C * 10)
     
     start:
-        loadid C r0
-        loadid B r1
-        loadid (15 * 2900) r2
-        loadid (91 + B) r3
+        loadid C, r0
+        loadid B, r1
+        loadid (15 * 2900), r2
+        loadid (91 + B), r3
 
         ; this won't work because expressions aren't yet implemented inside object files
-        ; loadid (start + 2) r0
+        ; loadid (start + 2), r0
         halt
     .section \"data\"
     .section \"rodata\"
@@ -198,7 +198,7 @@ fn expression_test() {
     
     let code = preprocess(code.to_string()).unwrap();
     let tokens = super::lex(&code, false).unwrap();
-    let node = super::parse(tokens, false).unwrap();
+    let node = super::parse("test", tokens, false).unwrap();
     
     let mut obj = ObjectFormat::new();
     obj.load_parser_node(&node).unwrap();
@@ -228,8 +228,8 @@ fn lex_test() {
 
     let code = ".define ABC 0xFE
     start: ; hello world this is a comment
-        loadid C r0
-        loadid (91 + B) r3 ;fgewt
+        loadid C, r0
+        loadid (91 + B), r3 ;fgewt
         jmp start
     string: .db \"Hello, world!\"
     ";
@@ -243,10 +243,10 @@ fn lex_test() {
 
             LexerTokenType::Label, LexerTokenType::Newline,
 
-            LexerTokenType::Identifier, LexerTokenType::Identifier, LexerTokenType::Identifier, LexerTokenType::Newline,
+            LexerTokenType::Identifier, LexerTokenType::Identifier, LexerTokenType::Comma, LexerTokenType::Identifier, LexerTokenType::Newline,
 
             LexerTokenType::Identifier, LexerTokenType::LParen, LexerTokenType::Integer, LexerTokenType::Plus,
-            LexerTokenType::Identifier, LexerTokenType::RParen, LexerTokenType::Identifier, LexerTokenType::Newline,
+            LexerTokenType::Identifier, LexerTokenType::RParen,  LexerTokenType::Comma, LexerTokenType::Identifier, LexerTokenType::Newline,
 
             LexerTokenType::Identifier, LexerTokenType::Identifier, LexerTokenType::Newline,
             LexerTokenType::Label, LexerTokenType::CompilerInstruction, LexerTokenType::String, LexerTokenType::Newline,
