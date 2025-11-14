@@ -737,7 +737,7 @@ pub struct ObjectFormat {
     pub defines: HashMap<String, Define>,
     pub sections: HashMap<String, SectionData>,
     compiler_instructions: HashMap<String, fn(&mut Self, &Vec<ParserNode>) -> Result<(), String>>,
-    current_section: String
+    current_section: String,
 }
 
 const DEFAULT_SECTION_NAME: &str = "text";
@@ -1144,6 +1144,7 @@ impl ObjectFormat {
 
         Ok(())
     }
+    
     // End compiler instructions
 
     pub fn create_jumper(entrypoint: String) -> Self {

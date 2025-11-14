@@ -243,8 +243,8 @@ impl Parser {
 
     fn parse_top_level<'a>(
         &mut self,
-        token: &LexerToken<'a>,
-        iterator: &mut core::slice::Iter<'a, LexerToken<'a>>
+        token: &LexerToken,
+        iterator: &mut core::slice::Iter<'a, LexerToken>
     ) -> Result<Option<ParserNode>, String> {
         match token.kind { // Highest level match
             LexerTokenType::CompilerInstruction => {
@@ -277,10 +277,10 @@ impl Parser {
         }
     }
 
-    fn parse_instruction<'a>(
+    fn parse_instruction(
         &mut self,
-        current_token: &LexerToken<'a>,
-        tokens: &mut core::slice::Iter<'a, LexerToken<'a>>
+        current_token: &LexerToken,
+        tokens: &mut core::slice::Iter<'_, LexerToken>
     ) -> Result<ParserNode, String> {
         let mut node = ParserNode {
             node_type: NodeType::Instruction(current_token.slice.to_string()),
@@ -315,10 +315,10 @@ impl Parser {
         Ok(node)
     }
 
-    fn parse_compiler_instruction<'a>(
+    fn parse_compiler_instruction(
         &mut self,
-        current_token: &LexerToken<'a>,
-        tokens: &mut core::slice::Iter<'a, LexerToken<'a>>
+        current_token: &LexerToken,
+        tokens: &mut core::slice::Iter<'_, LexerToken>
     ) -> Result<ParserNode, String> {
         let mut node = ParserNode {
             node_type: NodeType::CompilerInstruction(
@@ -340,16 +340,16 @@ impl Parser {
         Ok(node)
     }
 
-    fn parse_expression<'a>(
+    fn parse_expression(
         &mut self,
-        current_token: &LexerToken<'a>,
-        tokens: &mut core::slice::Iter<'a, LexerToken<'a>>,
+        current_token: &LexerToken,
+        tokens: &mut core::slice::Iter<'_, LexerToken>,
         use_registers: bool, str_available: bool
     ) -> Result<ParserNode, String> {
         let rgs = Registers::new();
         match current_token.kind {
             LexerTokenType::Integer => {
-                let mut numtxt = current_token.slice;
+                let mut numtxt = current_token.slice.as_ref();
                 let try_convert: Result<i64, std::num::ParseIntError>;
 
                 if numtxt.starts_with("0x") {
@@ -431,7 +431,7 @@ impl Parser {
                 Ok(node)
             }
             LexerTokenType::FloatingPoint => {
-                let numtxt = current_token.slice;
+                let numtxt = current_token.slice.as_ref();
                 let try_convert = numtxt.parse::<f64>();
                 let num = match try_convert {
                     Ok(n) => n,
@@ -463,7 +463,7 @@ impl Parser {
                 })
             }
             LexerTokenType::Identifier => {
-                if rgs.has_key(current_token.slice) {
+                if rgs.has_key(current_token.slice.as_ref()) {
                     if !use_registers {
                         return Err(
                             format!("Register identifier used in incorrect context in \"{}\" at line {} column {}",

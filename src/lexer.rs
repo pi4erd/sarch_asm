@@ -1,4 +1,4 @@
-use std::{error::Error, fmt::Display};
+use std::{error::Error, fmt::Display, rc::Rc};
 use logos::{Lexer, Logos};
 
 #[derive(Logos, Debug, PartialEq)]
@@ -9,12 +9,16 @@ enum Token {
     #[regex(r"[\@a-zA-Z_][\@a-zA-Z_0-9]*:", character_callback)] Label((usize, usize)),
     #[regex(r"(?:\d+\.\d*|\d*\.\d+)", character_callback, priority = 5)] FloatingPoint((usize, usize)),
     #[regex(r"\.\w+", character_callback, priority = 4)] CompilerInstruction((usize, usize)),
-    #[token("\n", newline_callback)] Newline,
-    #[regex(r#""[^"]*""#, character_callback)] String((usize, usize)),
+    #[regex(r"\%\w+", character_callback, priority = 4)] PreprocessInstruction((usize, usize)),
+    #[regex(r#""[^"]*""#, character_callback, priority = 6)] String((usize, usize)),
     #[regex(r"'.'", character_callback)] Character((usize, usize)),
-    #[regex(r"[;#].*\n", newline_callback)] Comment,
+    #[regex(r"[;#].*", newline_callback)] Comment,
+    #[token("\n", newline_callback)] Newline,
+    #[token("\\", character_callback)] EscapeChar((usize, usize)),
     #[token("(", character_callback)] LParen((usize, usize)),
     #[token(")", character_callback)] RParen((usize, usize)),
+    #[token("{", character_callback)] LBracket((usize, usize)),
+    #[token("}", character_callback)] RBracket((usize, usize)),
     #[token(",", character_callback)] Comma((usize, usize)),
     #[token("+", character_callback)] Plus((usize, usize)),
     #[token("-", character_callback)] Minus((usize, usize)),
@@ -26,28 +30,44 @@ enum Token {
 pub enum LexerTokenType {
     Identifier, Integer, Label, FloatingPoint,
     CompilerInstruction, Newline, String,
-    Character, Comment, LParen, RParen, Comma, Plus,
-    Minus, Multiply, Divide
+    Character, Comment, LParen, RParen, LBracket, RBracket,
+    Escaped, Comma, Plus,
+    Minus, Multiply, Divide,
+    PreprocessInstruction,
+
+    EnterInclude, ExitInclude,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct LexerToken<'s> {
+#[derive(Clone, Debug)]
+pub struct LexerToken {
     pub kind: LexerTokenType,
-    pub slice: &'s str,
+    pub slice: Rc<str>,
     pub line: usize,
     pub column: usize,
 }
 
-#[derive(Clone, Debug)]
-pub struct LexerError {
-    message: String,
-    line: usize,
-    column: usize,
+#[derive(Debug)]
+pub enum LexerError {
+    Lexer {
+        message: String,
+        line: usize,
+        column: usize,
+    },
+    Other {
+        error: Box<dyn Error>,
+    }
 }
 
 impl Display for LexerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: line {} column {}", self.message, self.line, self.column)
+        match self {
+            LexerError::Lexer { message, line, column } => {
+                write!(f, "{}: line {} column {}", message, line, column)
+            },
+            Self::Other { error } => {
+                write!(f, "{error}")
+            }
+        }
     }
 }
 impl Error for LexerError {}
@@ -66,120 +86,85 @@ fn character_callback(lex: &mut Lexer<Token>) -> (usize, usize) {
     (line + 1, column + 1)
 }
 
-pub fn tokenize<'s>(code: &'s str) -> LexerResult<Vec<LexerToken<'s>>> {
+fn tokenize_internal<'s>(code: &'s str, prev_include: Option<&str>) -> LexerResult<Vec<LexerToken>> {
+    if prev_include.is_some() {
+        todo!("including file")
+    }
+
     let mut lex = Token::lexer(code);
 
     let mut tokens = Vec::new();
+
+    let mut escaping = false;
 
     while let Some(token) = lex.next() {
         let slice = lex.slice();
 
         if let Err(_) = token {
-            return Err(LexerError {
+            return Err(LexerError::Lexer {
                 message: format!("Unrecognized character '{}'.", slice),
                 line: lex.extras.0,
                 column: lex.extras.1,
             })
         }
 
-        let token = token.unwrap();
-
-        let token = match token {
-            Token::Identifier((line, column)) => LexerToken {
-                kind: LexerTokenType::Identifier,
-                slice,
-                line,
-                column,
-            },
-            Token::Integer((line, column)) => LexerToken {
-                kind: LexerTokenType::Integer,
-                slice,
-                line,
-                column,
-            },
-            Token::Label((line, column)) => LexerToken {
-                kind: LexerTokenType::Label,
-                slice,
-                line,
-                column,
-            },
-            Token::FloatingPoint((line, column)) => LexerToken {
-                kind: LexerTokenType::FloatingPoint,
-                slice,
-                line,
-                column,
-            },
-            Token::CompilerInstruction((line, column)) => LexerToken {
-                kind: LexerTokenType::CompilerInstruction,
-                slice,
-                line,
-                column,
-            },
-            Token::Comment |
-            Token::Newline => LexerToken {
-                kind: LexerTokenType::Newline,
-                slice,
+        if escaping {
+            let token = LexerToken {
+                kind: LexerTokenType::Escaped,
+                slice: Rc::from(slice),
                 line: lex.extras.0,
                 column: lex.extras.1,
-            },
-            Token::String((line, column)) => LexerToken {
-                kind: LexerTokenType::String,
-                slice,
-                line,
-                column,
-            },
-            Token::Character((line, column)) => LexerToken {
-                kind: LexerTokenType::Character,
-                slice,
-                line,
-                column,
-            },
-            Token::LParen((line, column)) => LexerToken {
-                kind: LexerTokenType::LParen,
-                slice,
-                line,
-                column,
-            },
-            Token::RParen((line, column)) => LexerToken {
-                kind: LexerTokenType::RParen,
-                slice,
-                line,
-                column,
-            },
-            Token::Comma((line, column)) => LexerToken {
-                kind: LexerTokenType::Comma,
-                slice,
-                line,
-                column,
-            },
-            Token::Plus((line, column)) => LexerToken {
-                kind: LexerTokenType::Plus,
-                slice,
-                line,
-                column,
-            },
-            Token::Minus((line, column)) => LexerToken {
-                kind: LexerTokenType::Minus,
-                slice,
-                line,
-                column,
-            },
-            Token::Multiply((line, column)) => LexerToken {
-                kind: LexerTokenType::Multiply,
-                slice,
-                line,
-                column,
-            },
-            Token::Divide((line, column)) => LexerToken {
-                kind: LexerTokenType::Divide,
-                slice,
-                line,
-                column,
-            },
+            };
+
+            tokens.push(token);
+            escaping = false;
+
+            continue;
+        }
+        
+        let token = token.unwrap();        
+
+        let token_kind = match &token {
+            Token::Identifier(_) => LexerTokenType::Identifier,
+            Token::Integer(_) => LexerTokenType::Integer,
+            Token::Label(_) => LexerTokenType::Label,
+            Token::LParen(_) => LexerTokenType::LParen,
+            Token::RParen(_) => LexerTokenType::RParen,
+            Token::LBracket(_) => LexerTokenType::LBracket,
+            Token::RBracket(_) => LexerTokenType::RBracket,
+            Token::Newline => LexerTokenType::Newline,
+            Token::Comment => LexerTokenType::Comment,
+            Token::EscapeChar(_) => {
+                escaping = true;
+                continue;
+            }
+            Token::CompilerInstruction(_) => LexerTokenType::CompilerInstruction,
+            Token::String(_) => LexerTokenType::String,
+            Token::FloatingPoint(_) => LexerTokenType::FloatingPoint,
+            Token::PreprocessInstruction(_) => LexerTokenType::PreprocessInstruction,
+            Token::Character(_) => LexerTokenType::Character,
+            Token::Comma(_) => LexerTokenType::Comma,
+            Token::Plus(_) => LexerTokenType::Plus,
+            Token::Minus(_) => LexerTokenType::Minus,
+            Token::Multiply(_) => LexerTokenType::Multiply,
+            Token::Divide(_) => LexerTokenType::Divide,
+        };
+
+        let token = LexerToken {
+            kind: token_kind,
+            slice: Rc::from(slice),
+            line: lex.extras.0,
+            column: lex.extras.1,
         };
 
         tokens.push(token);
     }
+
+    return Ok(tokens)
+}
+
+pub fn tokenize<'s>(code: &'s str) -> LexerResult<Vec<LexerToken>> {
+    let tokens = tokenize_internal(code, None)?;
 
     Ok(tokens)
 }

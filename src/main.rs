@@ -1,5 +1,5 @@
-pub mod preprocessor;
 pub mod lexer;
+pub mod preprocessor;
 pub mod parser;
 pub mod symbols;
 pub mod objgen;
@@ -11,11 +11,10 @@ pub mod tests;
 use lexer::{LexerResult, LexerToken};
 use objdump::Objdump;
 use parser::{Parser, ParserNode};
-use preprocessor::Preprocessor;
 
-use crate::{objgen::ObjectFormat, linker::Linker};
+use crate::{linker::Linker, objgen::ObjectFormat, preprocessor::Preprocessor};
 
-use std::{fs, env::args, process::ExitCode};
+use std::{collections::HashMap, env::args, fs, process::ExitCode};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION", "No crate version is defined in environment variables.");
 const GITHUB: &'static str = "https://github.com/pi4erd/sarch_asm";
@@ -27,7 +26,7 @@ fn print_version() {
 // TODO: Update with every argument
 fn print_usage(program: &str) {
     eprintln!("\nUsage: {} <input_file>\n", program);
-    eprintln!("\t-b | --oblect\t\t\tCompile to object without linking");
+    eprintln!("\t-b | --object\t\t\tCompile to object without linking");
     eprintln!("\t-c | --link-script <filename>\tSpecify linker script");
     eprintln!("\t-d | --disassemble\t\tToggle disassembly for an object file");
     eprintln!("\t-h | --help\t\t\tPrint this menu");
@@ -39,12 +38,11 @@ fn print_usage(program: &str) {
     eprintln!("\t     --link\t\t\tTreat input file as SAO and link it");
 }
 
-pub fn preprocess(code: String) -> Result<String, String> {
-    let pp = Preprocessor::new(code);
-    pp.preprocess()
-}
-
-pub fn lex(code: &str, print_tokens: bool) -> LexerResult<Vec<LexerToken>> {
+pub fn lex<'a>(
+    included: &'a mut HashMap<String, String>,
+    code: &'a str,
+    print_tokens: bool
+) -> LexerResult<Vec<LexerToken>> {
     let tokens = lexer::tokenize(code)?;
 
     if print_tokens {
@@ -53,7 +51,11 @@ pub fn lex(code: &str, print_tokens: bool) -> LexerResult<Vec<LexerToken>> {
         }
     }
 
-    Ok(tokens)
+    let mut preprocessor = Preprocessor::new(included);
+
+    let tokens = preprocessor.preprocess(tokens)?;
+
+    return Ok(tokens);
 }
 
 pub fn parse(filename: &str, tokens: Vec<LexerToken>, print_ast: bool) -> Result<ParserNode, String> {
@@ -73,15 +75,14 @@ pub fn parse(filename: &str, tokens: Vec<LexerToken>, print_ast: bool) -> Result
 }
 
 fn main() -> ExitCode {
-    // Debug stuff #
-    let print_tokens = false;
+    // Debug stuff
+    let print_tokens = true;
     let print_ast = false;
     let print_object_tree = false;
-    // ############
 
     let mut args: std::env::Args = args();
 
-    // Inputs #####
+    // Inputs
     let mut input_files: Vec<String> = Vec::new();
     let mut output_file = "output.bin".to_string();
     let mut linker_script: Option<&str> = None;
@@ -93,9 +94,10 @@ fn main() -> ExitCode {
     let mut disassemble = false;
     let mut print_resolve_sections = false;
     let mut entrypoint: Option<String> = None;
-    // ############
 
+    // Additional variables
     let mut linker_script_filename: String;
+    let mut included: HashMap<String, String> = HashMap::new();
 
     let program = args.next().unwrap();
 
@@ -214,15 +216,9 @@ fn main() -> ExitCode {
                 }
             };
 
-            let new_code = match preprocess(code) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("Failed to preprocess file: {e}");
-                    return ExitCode::FAILURE
-                }
-            };
+            included.insert(filepath.clone(), code.clone());
             
-            let tokens = match lex(&new_code, print_tokens) {
+            let tokens = match lex(&mut included, &code, print_tokens) {
                 Ok(tokens) => tokens,
                 Err(e) => {
                     eprintln!("Error occured while lexing: {e}");

@@ -1,9 +1,9 @@
 #[cfg(test)]
 
-use crate::preprocess;
-
 #[test]
 fn label_defbyte() {
+    use std::collections::HashMap;
+
     use crate::{objgen::ObjectFormat, linker::Linker};
 
     let code = ".section \"text\"
@@ -26,8 +26,9 @@ fn label_defbyte() {
     .section \"rodata\"
     ";
 
-    let code = preprocess(code.to_string()).unwrap();
-    let tokens = super::lex(&code, false).unwrap();
+    let mut included = HashMap::new();
+
+    let tokens = super::lex(&mut included, &code, false).unwrap();
     let node = super::parse("test", tokens, false).unwrap();
     let mut obj = ObjectFormat::new();
     obj.load_parser_node(&node).unwrap();
@@ -55,6 +56,7 @@ fn label_defbyte() {
 #[test]
 fn sublabel_test() {
     use crate::objgen::ObjectFormat;
+    use std::collections::HashMap;
 
     let code = ".section \"text\"
     
@@ -77,8 +79,8 @@ fn sublabel_test() {
     .section \"rodata\"
     ";
 
-    let code = preprocess(code.to_string()).unwrap();
-    let tokens = super::lex(&code, false).unwrap();
+    let mut included = HashMap::new();
+    let tokens = super::lex(&mut included, &code, false).unwrap();
     let node = super::parse("test", tokens, false).unwrap();
 
     let mut obj = ObjectFormat::new();
@@ -87,6 +89,8 @@ fn sublabel_test() {
 
 #[test]
 fn macro_test() {
+    use std::collections::HashMap;
+    
     let code = ".section \"text\"
 
     %macro some_macro {
@@ -106,8 +110,8 @@ fn macro_test() {
     .section \"rodata\"
     ";
 
-    let code = preprocess(code.to_string()).unwrap();
-    let tokens = super::lex(&code, false).unwrap();
+    let mut included = HashMap::new();
+    let tokens = super::lex(&mut included, &code, false).unwrap();
     let _node = super::parse("test", tokens, false).unwrap();
 }
 
@@ -115,6 +119,8 @@ fn macro_test() {
 fn recursive_define() {
     use crate::objgen::{ObjectFormat, Constant};
 
+    use std::collections::HashMap;
+    
     let code = ".section \"text\"
     .define A 12
     .define B A
@@ -127,8 +133,8 @@ fn recursive_define() {
     .section \"rodata\"
     ";
 
-    let code = preprocess(code.to_string()).unwrap();
-    let tokens = super::lex(&code, false).unwrap();
+    let mut included = HashMap::new();
+    let tokens = super::lex(&mut included, &code, false).unwrap();
     let node = super::parse("test", tokens, false).unwrap();
     let mut obj = ObjectFormat::new();
     obj.load_parser_node(&node).unwrap();
@@ -146,7 +152,9 @@ fn recursive_define() {
 
 #[test]
 fn infinite_define() {
+    use std::collections::HashMap;
     use crate::objgen::ObjectFormat;
+    
     let code = ".section \"text\"
     .define A B
     .define B A
@@ -160,8 +168,9 @@ fn infinite_define() {
     .section \"rodata\"
     ";
 
-    let code = preprocess(code.to_string()).unwrap();
-    let tokens = super::lex(&code, false).unwrap();
+
+    let mut included = HashMap::new();
+    let tokens = super::lex(&mut included, &code, false).unwrap();
     let node = super::parse("test", tokens, false).unwrap();
     let mut obj = ObjectFormat::new();
     let res = obj.load_parser_node(&node);
@@ -176,6 +185,7 @@ fn infinite_define() {
 #[test]
 fn expression_test() {
     use crate::{objgen::ObjectFormat, parser::NodeType};
+    use std::collections::HashMap;
 
     let code = ".section \"text\"
     .define A 3
@@ -196,8 +206,8 @@ fn expression_test() {
     .section \"rodata\"
     ";
     
-    let code = preprocess(code.to_string()).unwrap();
-    let tokens = super::lex(&code, false).unwrap();
+    let mut included = HashMap::new();
+    let tokens = super::lex(&mut included, &code, false).unwrap();
     let node = super::parse("test", tokens, false).unwrap();
     
     let mut obj = ObjectFormat::new();
@@ -211,30 +221,39 @@ fn expression_test() {
 
 #[test]
 fn include_test() {
-    let code = r#"%include "tests/test_include.txt"
-    "#;
+    use std::collections::HashMap;
+    use crate::lexer::LexerTokenType;
 
-    let code = preprocess(code.to_string()).unwrap();
+    let code = "
+    %include \"tests/test_file.s\"
+ 
+    start: ; comment
+        jmp start
+    ";
 
-    assert_eq!(
-        String::from_utf8(std::fs::read("tests/test_include.txt").unwrap()).unwrap().trim(),
-        code.trim(),
-    );
+    let mut included = HashMap::new();
+    let tokens = super::lex(&mut included, code, false).unwrap();
+    
+    assert!(tokens.iter().find(|t| t.kind == LexerTokenType::Comment).is_none());
+
+    println!("{tokens:?}");
 }
 
 #[test]
 fn lex_test() {
     use crate::lexer::LexerTokenType;
+    use std::collections::HashMap;
 
     let code = ".define ABC 0xFE
     start: ; hello world this is a comment
         loadid C, r0
         loadid (91 + B), r3 ;fgewt
-        jmp start
+        jmp start # no influence :)
     string: .db \"Hello, world!\"
     ";
     
-    let tokens = crate::lexer::tokenize(code).unwrap();
+    let mut included = HashMap::new();
+    let tokens = super::lex(&mut included, code, false).unwrap();
 
     assert_eq!(
         tokens.into_iter().map(|t| t.kind).collect::<Vec<_>>(),
