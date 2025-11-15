@@ -100,20 +100,33 @@ fn macro_test() {
         loadid 0xBAD, ra ; ve
     }
 
+    %macro argumented_macro(hello, world) {
+        \\hello
+        \\world
+    }
+
     some_macro
     some_macro
     some_macro
     some_macro
     some_macro
+
+    argumented_macro(nop, nop)
     ";
 
     let mut included = HashMap::new();
     let tokens = super::lex(&mut included, &code, false).unwrap();
 
-    assert!(tokens.iter().find(|t| t.kind == LexerTokenType::PreprocessInstruction).is_none());
-    assert!(tokens.iter().find(|t| t.kind == LexerTokenType::Comment).is_none());
+    assert!(tokens.iter().find(|t| {
+        t.kind == LexerTokenType::PreprocessInstruction ||
+        t.kind == LexerTokenType::Comment ||
+        t.kind == LexerTokenType::LParen ||
+        t.kind == LexerTokenType::RParen
+    }).is_none());
 
-    let _node = super::parse("test", tokens, false).unwrap();
+    let node = super::parse("test", tokens, false).unwrap();
+
+    println!("{:#?}", node);
 }
 
 #[test]

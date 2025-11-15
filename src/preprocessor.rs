@@ -10,6 +10,7 @@ struct Macro {
 
 impl Macro {
     fn expand(&self, token: LexerToken, args: &[LexerToken]) -> LexerResult<Vec<LexerToken>> {
+        // TODO: Multi-token per argument support
         if args.len() != self.args.len() {
             return Err(LexerError::Lexer {
                 message: format!(
@@ -26,8 +27,19 @@ impl Macro {
         for token in self.token_list.iter() {
             match token.kind {
                 LexerTokenType::Escaped => {
-                    println!("Escaped argument: {}", token.slice);
-                    todo!();
+                    let arg = self.args
+                        .iter()
+                        .enumerate()
+                        .find(|(_, a)| *a == token.slice.as_ref());
+
+                    if let Some((i, _)) = arg {
+                        tokens.push(args[i].clone());
+                    } else {
+                        return Err(LexerError::EOF {
+                            line: token.line,
+                            column: token.column,
+                        })
+                    }
                 },
                 _ => tokens.push(token.clone()),
             }
@@ -97,6 +109,8 @@ impl<'a> Preprocessor<'a> {
     {
         let mut args = Vec::new();
 
+        let mut last_token: Option<LexerToken> = None;
+
         while let Some(token) = token_iter.next() {
             args.push(token.clone());
 
@@ -105,13 +119,14 @@ impl<'a> Preprocessor<'a> {
                     line: token.line,
                     column: token.column
                 })?;
+            last_token = Some(token.clone());
             
             if token.kind != LexerTokenType::Comma {
                 break;
             }
         }
 
-        token_iter.next()
+        last_token
             .ok_or(LexerError::EOF {
                 line: token.line,
                 column: token.column,
@@ -185,28 +200,46 @@ mod instructions {
     use crate::{lexer::{LexerError, LexerResult, LexerToken, LexerTokenType, tokenize}, preprocessor::Preprocessor};
 
     fn collect_arguments<I>(
+        token: LexerToken,
         token_iter: &mut I,
     ) -> LexerResult<Vec<String>> where
         I: Iterator<Item = LexerToken>
     {
         let mut args: Vec<String> = Vec::new();
 
+        let mut last_token: Option<LexerToken> = None;
+
         while let Some(token) = token_iter.next() {
             match token.kind {
                 LexerTokenType::Identifier => {
                     args.push(token.slice.to_string());
+                    let token = token_iter.next()
+                        .ok_or(LexerError::EOF {
+                            line: token.line,
+                            column: token.column,
+                        })?;
+                    last_token = Some(token.clone());
+                    
+                    if token.kind != LexerTokenType::Comma {
+                        break;
+                    }
                 },
-                LexerTokenType::RParen => break,
                 _ => return Err(LexerError::Lexer {
-                    message: format!("Unexpected token {:?}. {:?} or {:?} expected.",
+                    message: format!("Unexpected token {:?}. {:?} expected.",
                         token.kind,
-                        LexerTokenType::Identifier, LexerTokenType::RParen,
+                        LexerTokenType::Identifier,
                     ),
                     line: token.line,
                     column: token.column,
                 })
             }
         }
+
+        last_token
+            .ok_or(LexerError::EOF {
+                line: token.line,
+                column: token.column,
+            })?.expect(LexerTokenType::RParen)?;
 
         return Ok(args)
     }
@@ -264,7 +297,7 @@ mod instructions {
         let mut token_list: Vec<LexerToken>;
 
         if token.kind == LexerTokenType::LParen {
-            args = Some(collect_arguments(token_iter)?);
+            args = Some(collect_arguments(token.clone(), token_iter)?);
             token = token_iter.next()
                 .ok_or(LexerError::EOF {
                     line: token.line,
