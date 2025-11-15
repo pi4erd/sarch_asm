@@ -1,7 +1,14 @@
-use crate::{objgen::{ObjectFormat, SectionData, InstructionData, ConstantSize, BinaryUnit}, symbols::{Instructions, ArgumentTypes}};
-use std::{fs, io::{Write, Read}, collections::HashMap};
+use crate::{
+    objgen::{BinaryUnit, ConstantSize, InstructionData, ObjectFormat, SectionData},
+    symbols::{ArgumentTypes, Instructions},
+};
 use byteorder::{LittleEndian, WriteBytesExt};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    fs,
+    io::{Read, Write},
+};
 
 macro_rules! calculate_alignment {
     ($num:expr, $alignment:expr) => {
@@ -22,18 +29,18 @@ macro_rules! calculate_alignment {
 #[derive(Debug, Serialize, Deserialize)]
 struct LinkStructureSection {
     name: String,
-    alignment: u64
+    alignment: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct LinkStructure {
-    sections: Vec<LinkStructureSection>
+    sections: Vec<LinkStructureSection>,
 }
 
 impl LinkStructure {
     /**
      * Creates a default link structure
-     * 
+     *
      * Default structure includes sections: text, data, rodata (ordered)
      * All sections by default are aligned to 0x100 bytes in hex
      */
@@ -42,17 +49,17 @@ impl LinkStructure {
             sections: vec![
                 LinkStructureSection {
                     name: "text".to_string(),
-                    alignment: 0x100
+                    alignment: 0x100,
                 },
                 LinkStructureSection {
                     name: "data".to_string(),
-                    alignment: 0x100
+                    alignment: 0x100,
                 },
                 LinkStructureSection {
                     name: "rodata".to_string(),
-                    alignment: 0x100
+                    alignment: 0x100,
                 },
-            ]
+            ],
         }
     }
 
@@ -65,7 +72,7 @@ impl LinkStructure {
     fn get_section_index(&self, name: &str) -> Option<usize> {
         for (idx, sec) in self.sections.iter().enumerate() {
             if sec.name == name {
-                return Some(idx)
+                return Some(idx);
             }
         }
         None
@@ -75,7 +82,10 @@ impl LinkStructure {
         let mut file = match fs::File::open(path) {
             Ok(f) => f,
             Err(e) => {
-                return Err(format!("Failed to open file '{}' for reading!\n{}", path, e))
+                return Err(format!(
+                    "Failed to open file '{}' for reading!\n{}",
+                    path, e
+                ));
             }
         };
 
@@ -83,9 +93,7 @@ impl LinkStructure {
 
         match file.read_to_string(&mut txt) {
             Ok(l) => l,
-            Err(e) => {
-                return Err(format!("Error reading file '{}': {}", path, e))
-            }
+            Err(e) => return Err(format!("Error reading file '{}': {}", path, e)),
         };
 
         Self::from_text(txt)
@@ -94,9 +102,7 @@ impl LinkStructure {
     fn from_text(txt: String) -> Result<Self, String> {
         let link_struct = match serde_json::from_str::<LinkStructure>(&txt) {
             Ok(l) => l,
-            Err(e) => {
-                return Err(format!("Error occured while parsing JSON: {e}"))
-            }
+            Err(e) => return Err(format!("Error occured while parsing JSON: {e}")),
         };
         Ok(link_struct)
     }
@@ -104,13 +110,13 @@ impl LinkStructure {
 
 struct ResolvedReference {
     size: ConstantSize,
-    value: i64
+    value: i64,
 }
 
 pub struct Linker {
     link_structure: LinkStructure,
     section_symbols: HashMap<String, SectionData>,
-    section_binaries: HashMap<String, Vec<u8>>
+    section_binaries: HashMap<String, Vec<u8>>,
 }
 
 impl Linker {
@@ -118,7 +124,7 @@ impl Linker {
         Self {
             link_structure: LinkStructure::new(),
             section_symbols: HashMap::new(),
-            section_binaries: HashMap::new()
+            section_binaries: HashMap::new(),
         }
     }
 
@@ -136,7 +142,9 @@ impl Linker {
     pub fn load_symbols(&mut self, objfmt: ObjectFormat) -> Result<(), String> {
         for (sec_name, sec) in objfmt.sections {
             if self.section_symbols.contains_key(&sec_name) {
-                self.section_symbols.get_mut(&sec_name).unwrap()
+                self.section_symbols
+                    .get_mut(&sec_name)
+                    .unwrap()
                     .append_other(sec)?;
             } else {
                 self.section_symbols.insert(sec_name, sec);
@@ -163,47 +171,63 @@ impl Linker {
 
         match sec_iter.find(|(_, x)| {
             if x.labels.contains_key(label) {
-                return true
+                return true;
             }
             false
         }) {
             Some(s) => Some(s.0),
-            None => None
+            None => None,
         }
     }
 
     fn get_section_offset(&self, section_name: &str) -> Result<u64, String> {
         let link_section_index = match self.link_structure.get_section_index(section_name) {
             Some(lsi) => lsi,
-            None => return Err(format!("Linker script doesn't define section '{}': Undefined reference.", section_name))
+            None => {
+                return Err(format!(
+                    "Linker script doesn't define section '{}': Undefined reference.",
+                    section_name
+                ));
+            }
         };
 
         let mut offset = 0u64;
 
         // For every section before this
         for (idx, link_section) in self.link_structure.sections.iter().enumerate() {
-            if idx == link_section_index { break }
+            if idx == link_section_index {
+                break;
+            }
             let section = match self.section_symbols.get(&link_section.name) {
                 Some(s) => s,
-                None => {
-                    return Err(format!("No section '{}' found!", link_section.name))
-                }
+                None => return Err(format!("No section '{}' found!", link_section.name)),
             };
 
             offset += section.get_binary_size() as u64;
-            let alignment = self.link_structure.get_section(&link_section.name).unwrap().alignment;
+            let alignment = self
+                .link_structure
+                .get_section(&link_section.name)
+                .unwrap()
+                .alignment;
             offset = calculate_alignment!(offset, alignment);
         }
 
-        let alignment = self.link_structure.get_section(section_name)
-            .unwrap().alignment;
+        let alignment = self
+            .link_structure
+            .get_section(section_name)
+            .unwrap()
+            .alignment;
 
         let result = calculate_alignment!(offset, alignment);
 
         Ok(result)
     }
 
-    fn write_instruction_binary(&self, binary: &mut Vec<u8>, instruction: &InstructionData) -> Result<(), String> {
+    fn write_instruction_binary(
+        &self,
+        binary: &mut Vec<u8>,
+        instruction: &InstructionData,
+    ) -> Result<(), String> {
         let instructions = Instructions::new();
         // Unwrap, because we assume valid section data from object files
         let instr_symbol = instructions.get_instruction(instruction.opcode).unwrap();
@@ -215,17 +239,13 @@ impl Linker {
         // Write opcode
         if instr_symbol.extended_opcode() {
             match bin.write_u16::<LittleEndian>(instr_symbol.opcode) {
-                Ok(()) => {},
-                Err(e) => {
-                    return Err(format!("Failed to write binary: {e}"))
-                }
+                Ok(()) => {}
+                Err(e) => return Err(format!("Failed to write binary: {e}")),
             }
         } else {
             match bin.write_u8(instr_symbol.opcode as u8) {
-                Ok(()) => {},
-                Err(e) => {
-                    return Err(format!("Failed to write binary: {e}"))
-                }
+                Ok(()) => {}
+                Err(e) => return Err(format!("Failed to write binary: {e}")),
             }
         }
 
@@ -236,7 +256,10 @@ impl Linker {
             let sec_name = match self.find_section_with_label(&reference.rf) {
                 Some(s) => s,
                 None => {
-                    return Err(format!("Failed to resolve reference '{}': Undefined reference.", reference.rf))
+                    return Err(format!(
+                        "Failed to resolve reference '{}': Undefined reference.",
+                        reference.rf
+                    ));
                 }
             };
             let section = &self.section_symbols[sec_name];
@@ -251,17 +274,25 @@ impl Linker {
             let arg_size = instr_symbol.args[reference.argument_pos as usize].get_size();
 
             // FIXME: Unwraps
-            resolved_references.insert(reference.argument_pos, ResolvedReference { 
-                size: ConstantSize::from_u8(arg_size as u8).unwrap(), value: offset as i64 
-            });
+            resolved_references.insert(
+                reference.argument_pos,
+                ResolvedReference {
+                    size: ConstantSize::from_u8(arg_size as u8).unwrap(),
+                    value: offset as i64,
+                },
+            );
         }
 
         for constant in instruction.constants.iter() {
-            resolved_references.insert(constant.argument_pos, ResolvedReference {
-                size: constant.size, value: constant.value
-            });
+            resolved_references.insert(
+                constant.argument_pos,
+                ResolvedReference {
+                    size: constant.size,
+                    value: constant.value,
+                },
+            );
         }
-        
+
         // FIXME: Actually i am stupid and have no idea how to do this otherwise.
         // If anyone has any idea on how to improve this piece of... code...
         // Please help me. I would appreciate any direction anyone is willing to give me.
@@ -280,7 +311,9 @@ impl Linker {
                 // FIXME: UNWRAPS
                 ConstantSize::Byte => bin.write_i8(arg.value as i8).unwrap(),
                 ConstantSize::Word => bin.write_i16::<LittleEndian>(arg.value as i16).unwrap(),
-                ConstantSize::DoubleWord => bin.write_i32::<LittleEndian>(arg.value as i32).unwrap()
+                ConstantSize::DoubleWord => {
+                    bin.write_i32::<LittleEndian>(arg.value as i32).unwrap()
+                }
             }
         }
         // instructions are packed, and not aligned, so it should be fine to do this, right?
@@ -296,7 +329,9 @@ impl Linker {
                 // FIXME: UNWRAPS
                 ConstantSize::Byte => bin.write_i8(arg.value as i8).unwrap(),
                 ConstantSize::Word => bin.write_i16::<LittleEndian>(arg.value as i16).unwrap(),
-                ConstantSize::DoubleWord => bin.write_i32::<LittleEndian>(arg.value as i32).unwrap()
+                ConstantSize::DoubleWord => {
+                    bin.write_i32::<LittleEndian>(arg.value as i32).unwrap()
+                }
             }
         }
 
@@ -305,12 +340,19 @@ impl Linker {
         Ok(())
     }
 
-    fn write_binary_unit_binary(&self, binary: &mut Vec<u8>, unit: &BinaryUnit) -> Result<(), String> {
+    fn write_binary_unit_binary(
+        &self,
+        binary: &mut Vec<u8>,
+        unit: &BinaryUnit,
+    ) -> Result<(), String> {
         if let Some(reference) = &unit.reference {
             let sec_name = match self.find_section_with_label(&reference.rf) {
                 Some(s) => s,
                 None => {
-                    return Err(format!("Failed to resolve reference '{}': Undefined reference.", reference.rf))
+                    return Err(format!(
+                        "Failed to resolve reference '{}': Undefined reference.",
+                        reference.rf
+                    ));
                 }
             };
 
@@ -324,17 +366,25 @@ impl Linker {
 
             match reference.size {
                 ConstantSize::Byte => binary.write_u8(symbol_position as u8).unwrap(),
-                ConstantSize::Word => binary.write_u16::<LittleEndian>(symbol_position as u16).unwrap(),
-                ConstantSize::DoubleWord => binary.write_u32::<LittleEndian>(symbol_position as u32).unwrap(),
+                ConstantSize::Word => binary
+                    .write_u16::<LittleEndian>(symbol_position as u16)
+                    .unwrap(),
+                ConstantSize::DoubleWord => binary
+                    .write_u32::<LittleEndian>(symbol_position as u32)
+                    .unwrap(),
             }
         } else if let Some(constant) = &unit.constant {
             match constant.size {
                 ConstantSize::Byte => binary.write_i8(constant.value as i8).unwrap(),
-                ConstantSize::Word => binary.write_i16::<LittleEndian>(constant.value as i16).unwrap(),
-                ConstantSize::DoubleWord => binary.write_i32::<LittleEndian>(constant.value as i32).unwrap()
+                ConstantSize::Word => binary
+                    .write_i16::<LittleEndian>(constant.value as i16)
+                    .unwrap(),
+                ConstantSize::DoubleWord => binary
+                    .write_i32::<LittleEndian>(constant.value as i32)
+                    .unwrap(),
             }
         } else {
-            return Err(format!("Binary unit contains no information to write!"))
+            return Err(format!("Binary unit contains no information to write!"));
         }
         Ok(())
     }
@@ -357,7 +407,7 @@ impl Linker {
     pub fn generate_binary(&mut self, ls_path: Option<&str>) -> Result<Vec<u8>, String> {
         self.link_structure = match ls_path {
             Some(lsp) => LinkStructure::from_file(lsp)?,
-            None => LinkStructure::new()
+            None => LinkStructure::new(),
         };
 
         for (sec_name, section) in self.section_symbols.iter() {
@@ -372,8 +422,11 @@ impl Linker {
             if let Some(mut bin) = self.section_binaries.get_mut(&section.name) {
                 binary.append(&mut bin);
             } else {
-                return Err(format!("Undefined reference to section '{}': \
-                linker section is defined but not found in binaries!", section.name))
+                return Err(format!(
+                    "Undefined reference to section '{}': \
+                linker section is defined but not found in binaries!",
+                    section.name
+                ));
             }
 
             let offset = self.get_section_offset(&section.name)?;
@@ -396,15 +449,15 @@ impl Linker {
         let mut file = match fs::File::create(path) {
             Ok(f) => f,
             Err(e) => {
-                return Err(format!("Error occured while trying to open file for saving: {e}"))
+                return Err(format!(
+                    "Error occured while trying to open file for saving: {e}"
+                ));
             }
         };
 
         match file.write_all(bin.as_slice()) {
             Ok(_) => Ok(()),
-            Err(e) => {
-                Err(format!("Error occured while writing binary to file: {e}"))
-            }
+            Err(e) => Err(format!("Error occured while writing binary to file: {e}")),
         }
     }
 }

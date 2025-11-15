@@ -1,10 +1,9 @@
 #[cfg(test)]
-
 #[test]
 fn label_defbyte() {
     use std::collections::HashMap;
 
-    use crate::{objgen::ObjectFormat, linker::Linker};
+    use crate::{linker::Linker, objgen::ObjectFormat};
 
     let code = ".section \"text\"
     
@@ -89,9 +88,9 @@ fn sublabel_test() {
 
 #[test]
 fn macro_test() {
-    use std::collections::HashMap;
     use crate::lexer::LexerTokenType;
-    
+    use std::collections::HashMap;
+
     let code = "
     %macro some_macro {
         ; macro content
@@ -117,12 +116,17 @@ fn macro_test() {
     let mut included = HashMap::new();
     let tokens = super::lex(&mut included, &code, false).unwrap();
 
-    assert!(tokens.iter().find(|t| {
-        t.kind == LexerTokenType::PreprocessInstruction ||
-        t.kind == LexerTokenType::Comment ||
-        t.kind == LexerTokenType::LParen ||
-        t.kind == LexerTokenType::RParen
-    }).is_none());
+    assert!(
+        tokens
+            .iter()
+            .find(|t| {
+                t.kind == LexerTokenType::PreprocessInstruction
+                    || t.kind == LexerTokenType::Comment
+                    || t.kind == LexerTokenType::LParen
+                    || t.kind == LexerTokenType::RParen
+            })
+            .is_none()
+    );
 
     let node = super::parse("test", tokens, false).unwrap();
 
@@ -131,10 +135,10 @@ fn macro_test() {
 
 #[test]
 fn recursive_define() {
-    use crate::objgen::{ObjectFormat, Constant};
+    use crate::objgen::{Constant, ObjectFormat};
 
     use std::collections::HashMap;
-    
+
     let code = ".section \"text\"
     .define A 12
     .define B A
@@ -157,18 +161,21 @@ fn recursive_define() {
 
     assert_eq!(instr.constants.len(), 2);
     assert_eq!(instr.references.len(), 0);
-    assert_eq!(instr.constants[0], Constant {
-        argument_pos: 0,
-        size: crate::objgen::ConstantSize::DoubleWord,
-        value: 12
-    })
+    assert_eq!(
+        instr.constants[0],
+        Constant {
+            argument_pos: 0,
+            size: crate::objgen::ConstantSize::DoubleWord,
+            value: 12
+        }
+    )
 }
 
 #[test]
 fn infinite_define() {
-    use std::collections::HashMap;
     use crate::objgen::ObjectFormat;
-    
+    use std::collections::HashMap;
+
     let code = ".section \"text\"
     .define A B
     .define B A
@@ -181,7 +188,6 @@ fn infinite_define() {
     .section \"data\"
     .section \"rodata\"
     ";
-
 
     let mut included = HashMap::new();
     let tokens = super::lex(&mut included, &code, false).unwrap();
@@ -219,14 +225,14 @@ fn expression_test() {
     .section \"data\"
     .section \"rodata\"
     ";
-    
+
     let mut included = HashMap::new();
     let tokens = super::lex(&mut included, &code, false).unwrap();
     let node = super::parse("test", tokens, false).unwrap();
-    
+
     let mut obj = ObjectFormat::new();
     obj.load_parser_node(&node).unwrap();
-    
+
     assert_eq!(obj.defines["A"].node.node_type, NodeType::ConstInteger(3));
     assert_eq!(obj.defines["B"].node.node_type, NodeType::ConstInteger(7));
     assert_eq!(obj.defines["C"].node.node_type, NodeType::ConstInteger(50));
@@ -235,8 +241,8 @@ fn expression_test() {
 
 #[test]
 fn include_test() {
-    use std::collections::HashMap;
     use crate::lexer::LexerTokenType;
+    use std::collections::HashMap;
 
     let code = "
     %include \"tests/test_file.s\"
@@ -247,8 +253,13 @@ fn include_test() {
 
     let mut included = HashMap::new();
     let tokens = super::lex(&mut included, code, false).unwrap();
-    
-    assert!(tokens.iter().find(|t| t.kind == LexerTokenType::Comment).is_none());
+
+    assert!(
+        tokens
+            .iter()
+            .find(|t| t.kind == LexerTokenType::Comment)
+            .is_none()
+    );
 
     println!("{tokens:?}");
 }
@@ -266,7 +277,10 @@ fn comma_test() {
     let tokens = super::lex(&mut included, code, false).unwrap();
     let result = super::parse("comma_test", tokens, false);
 
-    assert!(result.is_err(), "No commas between arguments MUST give error.");
+    assert!(
+        result.is_err(),
+        "No commas between arguments MUST give error."
+    );
 
     println!("{:?}", result);
 }
@@ -283,24 +297,40 @@ fn lex_test() {
         jmp start # no influence :)
     string: .db \"Hello, world!\"
     ";
-    
+
     let mut included = HashMap::new();
     let tokens = super::lex(&mut included, code, false).unwrap();
 
     assert_eq!(
         tokens.into_iter().map(|t| t.kind).collect::<Vec<_>>(),
         vec![
-            LexerTokenType::CompilerInstruction, LexerTokenType::Identifier, LexerTokenType::Integer, LexerTokenType::Newline,
-
-            LexerTokenType::Label, LexerTokenType::Newline,
-
-            LexerTokenType::Identifier, LexerTokenType::Identifier, LexerTokenType::Comma, LexerTokenType::Identifier, LexerTokenType::Newline,
-
-            LexerTokenType::Identifier, LexerTokenType::LParen, LexerTokenType::Integer, LexerTokenType::Plus,
-            LexerTokenType::Identifier, LexerTokenType::RParen,  LexerTokenType::Comma, LexerTokenType::Identifier, LexerTokenType::Newline,
-
-            LexerTokenType::Identifier, LexerTokenType::Identifier, LexerTokenType::Newline,
-            LexerTokenType::Label, LexerTokenType::CompilerInstruction, LexerTokenType::String, LexerTokenType::Newline,
+            LexerTokenType::CompilerInstruction,
+            LexerTokenType::Identifier,
+            LexerTokenType::Integer,
+            LexerTokenType::Newline,
+            LexerTokenType::Label,
+            LexerTokenType::Newline,
+            LexerTokenType::Identifier,
+            LexerTokenType::Identifier,
+            LexerTokenType::Comma,
+            LexerTokenType::Identifier,
+            LexerTokenType::Newline,
+            LexerTokenType::Identifier,
+            LexerTokenType::LParen,
+            LexerTokenType::Integer,
+            LexerTokenType::Plus,
+            LexerTokenType::Identifier,
+            LexerTokenType::RParen,
+            LexerTokenType::Comma,
+            LexerTokenType::Identifier,
+            LexerTokenType::Newline,
+            LexerTokenType::Identifier,
+            LexerTokenType::Identifier,
+            LexerTokenType::Newline,
+            LexerTokenType::Label,
+            LexerTokenType::CompilerInstruction,
+            LexerTokenType::String,
+            LexerTokenType::Newline,
         ]
     )
 }

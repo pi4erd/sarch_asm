@@ -1,7 +1,7 @@
 use crate::{objgen::ObjectFormat, symbols::Instructions};
 
 pub struct Objdump {
-    object: ObjectFormat
+    object: ObjectFormat,
 }
 
 impl Objdump {
@@ -32,10 +32,16 @@ impl Objdump {
                 let sym = match instructions.get_instruction(instruction.opcode) {
                     Some(s) => s,
                     None => {
-                        return Err(format!("No instruction with opcode '{}' exists!", instruction.opcode))
+                        return Err(format!(
+                            "No instruction with opcode '{}' exists!",
+                            instruction.opcode
+                        ));
                     }
                 };
-                result += &format!("\t{:#06x} ({:#04x}): {} ", offset, instruction.opcode, sym.name);
+                result += &format!(
+                    "\t{:#06x} ({:#04x}): {} ",
+                    offset, instruction.opcode, sym.name
+                );
 
                 result += &instruction.get_args();
 

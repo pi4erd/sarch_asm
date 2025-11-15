@@ -1,10 +1,10 @@
 pub mod lexer;
-pub mod preprocessor;
-pub mod parser;
-pub mod symbols;
-pub mod objgen;
 pub mod linker;
 pub mod objdump;
+pub mod objgen;
+pub mod parser;
+pub mod preprocessor;
+pub mod symbols;
 
 pub mod tests;
 
@@ -16,7 +16,10 @@ use crate::{linker::Linker, objgen::ObjectFormat, preprocessor::Preprocessor};
 
 use std::{collections::HashMap, env::args, fs, process::ExitCode};
 
-const VERSION: &'static str = env!("CARGO_PKG_VERSION", "No crate version is defined in environment variables.");
+const VERSION: &'static str = env!(
+    "CARGO_PKG_VERSION",
+    "No crate version is defined in environment variables."
+);
 const GITHUB: &'static str = "https://github.com/pi4erd/sarch_asm";
 
 fn print_version() {
@@ -41,7 +44,7 @@ fn print_usage(program: &str) {
 pub fn lex<'a>(
     included: &'a mut HashMap<String, String>,
     code: &'a str,
-    print_tokens: bool
+    print_tokens: bool,
 ) -> LexerResult<Vec<LexerToken>> {
     let tokens = lexer::tokenize(code)?;
 
@@ -58,13 +61,15 @@ pub fn lex<'a>(
     return Ok(tokens);
 }
 
-pub fn parse(filename: &str, tokens: Vec<LexerToken>, print_ast: bool) -> Result<ParserNode, String> {
+pub fn parse(
+    filename: &str,
+    tokens: Vec<LexerToken>,
+    print_ast: bool,
+) -> Result<ParserNode, String> {
     let mut parser = Parser::new();
     match parser.parse(filename, &tokens) {
         Ok(n) => n,
-        Err(err) => {
-            return Err(format!("Error occured while parsing:\n{}", err))
-        }
+        Err(err) => return Err(format!("Error occured while parsing:\n{}", err)),
     };
 
     if print_ast {
@@ -122,11 +127,11 @@ fn main() -> ExitCode {
             }
             "-h" | "--help" => {
                 print_usage(&program);
-                return ExitCode::SUCCESS
+                return ExitCode::SUCCESS;
             }
             "-v" | "--version" => {
                 print_version();
-                return ExitCode::SUCCESS
+                return ExitCode::SUCCESS;
             }
             "-k" | "--keep-object" => {
                 keep_object = true;
@@ -140,7 +145,7 @@ fn main() -> ExitCode {
                 if linker_script != None {
                     eprintln!("Cannot specify multiple linker scripts!");
                     print_usage(&program);
-                    return ExitCode::FAILURE
+                    return ExitCode::FAILURE;
                 }
                 linker_script_filename = match args.next() {
                     Some(f) => f,
@@ -165,7 +170,7 @@ fn main() -> ExitCode {
                     None => {
                         eprintln!("Expected filename after '{}'", arg);
                         print_usage(&program);
-                        return ExitCode::FAILURE
+                        return ExitCode::FAILURE;
                     }
                 };
                 lib_files.push(filename);
@@ -189,7 +194,7 @@ fn main() -> ExitCode {
                     None => {
                         eprintln!("Expected label name after '{arg}'");
                         print_usage(&program);
-                        return ExitCode::FAILURE
+                        return ExitCode::FAILURE;
                     }
                 };
                 entrypoint = Some(labelname)
@@ -202,7 +207,7 @@ fn main() -> ExitCode {
 
     if input_files.len() == 0 {
         print_usage(&program);
-        return ExitCode::FAILURE
+        return ExitCode::FAILURE;
     }
     let mut objects: Vec<ObjectFormat> = Vec::new();
 
@@ -212,12 +217,12 @@ fn main() -> ExitCode {
                 Ok(s) => s,
                 Err(e) => {
                     eprintln!("Failed to read file: {}", e);
-                    return ExitCode::FAILURE
+                    return ExitCode::FAILURE;
                 }
             };
 
             included.insert(filepath.clone(), code.clone());
-            
+
             let tokens = match lex(&mut included, &code, print_tokens) {
                 Ok(tokens) => tokens,
                 Err(e) => {
@@ -230,16 +235,16 @@ fn main() -> ExitCode {
                 Ok(n) => n,
                 Err(e) => {
                     eprintln!("Error occured while parsing: {}", e);
-                    return ExitCode::FAILURE
+                    return ExitCode::FAILURE;
                 }
             };
 
             let mut object = ObjectFormat::new();
             match object.load_parser_node(&node) {
-                Ok(()) => {},
+                Ok(()) => {}
                 Err(err) => {
                     eprintln!("Error occured while generating object file:\n{}", err);
-                    return ExitCode::FAILURE
+                    return ExitCode::FAILURE;
                 }
             }
             if print_object_tree {
@@ -248,14 +253,16 @@ fn main() -> ExitCode {
 
             objects.push(object)
         }
-    }
-    else {
+    } else {
         for object_input in input_files.iter() {
             let object = match ObjectFormat::from_file(object_input) {
                 Ok(k) => k,
                 Err(e) => {
-                    eprintln!("Error occured while parsing binary from '{}': {}", object_input, e);
-                    return ExitCode::FAILURE
+                    eprintln!(
+                        "Error occured while parsing binary from '{}': {}",
+                        object_input, e
+                    );
+                    return ExitCode::FAILURE;
                 }
             };
             objects.push(object)
@@ -265,14 +272,14 @@ fn main() -> ExitCode {
     if disassemble {
         if objects.len() > 1 {
             eprintln!("Cannot disassemble multiple files!");
-            return ExitCode::FAILURE
+            return ExitCode::FAILURE;
         }
         let object = match objects.get(0) {
             Some(o) => o,
             None => {
                 eprintln!("Not enough object files!");
                 print_usage(&program);
-                return ExitCode::FAILURE
+                return ExitCode::FAILURE;
             }
         };
         let input_file = &input_files[0];
@@ -284,7 +291,7 @@ fn main() -> ExitCode {
             }
             Err(e) => {
                 eprintln!("Error occured while disassembling file: {e}");
-                return ExitCode::FAILURE
+                return ExitCode::FAILURE;
             }
         }
         return ExitCode::SUCCESS;
@@ -294,17 +301,17 @@ fn main() -> ExitCode {
         if input_files.len() > 1 {
             eprintln!("Cannot compile multiple object files without linking!");
             print_usage(&program);
-            return ExitCode::FAILURE
+            return ExitCode::FAILURE;
         }
         let object = &objects[0];
         match object.save_object(&output_file) {
-            Ok(()) => {},
+            Ok(()) => {}
             Err(e) => {
                 eprintln!("Error occured while saving binary into file:\n{}", e);
-                return ExitCode::FAILURE
+                return ExitCode::FAILURE;
             }
         }
-        return ExitCode::SUCCESS
+        return ExitCode::SUCCESS;
     }
 
     if link_object {
@@ -313,39 +320,39 @@ fn main() -> ExitCode {
         if let Some(entry_label) = entrypoint {
             let first_object = ObjectFormat::create_jumper(entry_label);
             match linker.load_symbols(first_object) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     // this error shouldn't happen. if it does happen,
                     // then please fix this in objgen.rs/ObjectFormat::create_jumper()
                     eprintln!("Compiler error occured (you're lucky): {e}");
-                    return ExitCode::FAILURE
+                    return ExitCode::FAILURE;
                 }
             };
         }
-    
+
         for object in objects {
             match linker.load_symbols(object) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     eprintln!("Error occured while loading a symbol in linker: {e}");
-                    return ExitCode::FAILURE
+                    return ExitCode::FAILURE;
                 }
             };
         }
-        
+
         for lib in lib_files {
             let lib_fmt = match ObjectFormat::from_file(&lib) {
                 Ok(l) => l,
                 Err(e) => {
                     eprintln!("Error occured while reading library object: {e}");
-                    return ExitCode::FAILURE
+                    return ExitCode::FAILURE;
                 }
             };
             match linker.load_symbols(lib_fmt) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     eprintln!("Error occured while loading a library in linker: {e}");
-                    return ExitCode::FAILURE
+                    return ExitCode::FAILURE;
                 }
             };
         }
@@ -354,29 +361,32 @@ fn main() -> ExitCode {
             let filename = output_file.clone() + ".sao";
 
             match linker.save_object(&filename) {
-                Ok(()) => {},
+                Ok(()) => {}
                 Err(e) => {
                     eprintln!("Error occured while saving linker object: {e}");
-                    return ExitCode::FAILURE
+                    return ExitCode::FAILURE;
                 }
             }
         }
 
         match linker.save_binary(&output_file, linker_script) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 eprintln!("Error occured while linking: {e}");
-                return ExitCode::FAILURE
+                return ExitCode::FAILURE;
             }
         };
 
         if print_resolve_sections {
-            println!("{}", match linker.list_resolve_sections() {
-                Ok(s) => s,
-                Err(e) => format!("Unable to list sections: {e}"),
-            });
+            println!(
+                "{}",
+                match linker.list_resolve_sections() {
+                    Ok(s) => s,
+                    Err(e) => format!("Unable to list sections: {e}"),
+                }
+            );
         }
     }
-    
-    return ExitCode::SUCCESS
+
+    return ExitCode::SUCCESS;
 }

@@ -1,16 +1,15 @@
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 /**
  * objgen.rs
- * 
+ *
  * Generates object files for SArch32 ASM. Default extension: .sao
  */
-
 use std::collections::HashMap;
 use std::io::{Error, Write};
 use std::{fs, io, str};
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::parser::{BinaryOp, ExpressionType, NodeType, ParserNode, Registers, UnaryOp};
-use crate::symbols::{Instructions, ArgumentTypes, Conditions};
+use crate::symbols::{ArgumentTypes, Conditions, Instructions};
 
 macro_rules! unexpected_node {
     ($node:expr) => {
@@ -19,12 +18,18 @@ macro_rules! unexpected_node {
 }
 macro_rules! wrong_argument {
     ($node:expr, $expected:expr) => {
-        return Err(format!("Incorrect argument of {:?}. {:?} expected.", $node.node_type, $expected))
+        return Err(format!(
+            "Incorrect argument of {:?}. {:?} expected.",
+            $node.node_type, $expected
+        ))
     };
 }
 macro_rules! bad_compinstr {
     ($iname:expr) => {
-        return Err(format!("Invalid compiler instruction '{}'. No such instruction exists!", $iname))
+        return Err(format!(
+            "Invalid compiler instruction '{}'. No such instruction exists!",
+            $iname
+        ))
     };
 }
 macro_rules! unexpected_eof {
@@ -43,14 +48,14 @@ const CURRENT_FORMAT_VERSION: u32 = 4;
 #[derive(Debug, Clone)]
 pub struct Reference {
     pub argument_pos: u8,
-    pub rf: String
+    pub rf: String,
 }
 
 impl Reference {
     fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
         let mut me = Self {
             argument_pos: 0,
-            rf: String::new()
+            rf: String::new(),
         };
 
         me.argument_pos = binary.read_u8()?;
@@ -96,14 +101,14 @@ impl ConstantSize {
             1 => Some(ConstantSize::Byte),
             2 => Some(ConstantSize::Word),
             4 => Some(ConstantSize::DoubleWord),
-            _ => None
+            _ => None,
         }
     }
     fn to_u8(&self) -> u8 {
         match self {
             Self::Byte => 1,
             Self::Word => 2,
-            Self::DoubleWord => 4
+            Self::DoubleWord => 4,
         }
     }
     pub fn get_size(&self) -> usize {
@@ -120,7 +125,7 @@ impl ConstantSize {
 pub struct Constant {
     pub argument_pos: u8,
     pub size: ConstantSize,
-    pub value: i64
+    pub value: i64,
 }
 
 impl Constant {
@@ -128,7 +133,7 @@ impl Constant {
         let mut me = Self {
             argument_pos: 0,
             size: ConstantSize::Byte,
-            value: 0
+            value: 0,
         };
 
         me.argument_pos = binary.read_u8()?;
@@ -136,8 +141,10 @@ impl Constant {
         me.size = match ConstantSize::from_u8(binary.read_u8()?) {
             Some(n) => n,
             None => {
-                return Err(Error::new(io::ErrorKind::InvalidData,
-                format!("Wrong constant size in instruction!")))
+                return Err(Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Wrong constant size in instruction!"),
+                ));
             }
         };
 
@@ -156,7 +163,7 @@ impl Constant {
         match self.size {
             ConstantSize::Byte => binary.write_i8(self.value as i8),
             ConstantSize::Word => binary.write_i16::<LittleEndian>(self.value as i16),
-            ConstantSize::DoubleWord => binary.write_i32::<LittleEndian>(self.value as i32)
+            ConstantSize::DoubleWord => binary.write_i32::<LittleEndian>(self.value as i32),
         }?;
 
         Ok(())
@@ -175,7 +182,7 @@ impl Constant {
 pub struct InstructionData {
     pub opcode: u16,
     pub references: Vec<Reference>,
-    pub constants: Vec<Constant>
+    pub constants: Vec<Constant>,
 }
 
 impl InstructionData {
@@ -183,7 +190,7 @@ impl InstructionData {
         let mut me = Self {
             opcode: 0xFFFF,
             references: Vec::new(),
-            constants: Vec::new()
+            constants: Vec::new(),
         };
 
         me.opcode = binary.read_u16::<LittleEndian>()?;
@@ -204,9 +211,12 @@ impl InstructionData {
         for rf in me.references.iter() {
             for cst in me.constants.iter() {
                 if cst.argument_pos == rf.argument_pos {
-                    return Err(
-                        Error::new(io::ErrorKind::InvalidData, 
-                            format!("Reference and constant are pointing to same argument space. Maybe file corrupted?")))
+                    return Err(Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(
+                            "Reference and constant are pointing to same argument space. Maybe file corrupted?"
+                        ),
+                    ));
                 }
             }
         }
@@ -217,7 +227,7 @@ impl InstructionData {
         binary.write_u16::<LittleEndian>(self.opcode)?;
         binary.write_u8(self.references.len() as u8)?;
         binary.write_u8(self.constants.len() as u8)?;
-        
+
         for rf in self.references.iter() {
             rf.write_bytes(binary)?;
         }
@@ -236,7 +246,7 @@ impl InstructionData {
         let sym = instructions.get_instruction(self.opcode).unwrap();
 
         let mut result = String::new();
-        
+
         let mut consts = self.constants.iter();
         let mut refs = self.references.iter();
 
@@ -246,8 +256,8 @@ impl InstructionData {
             match refs.find(|r| r.argument_pos == (i as u8)) {
                 Some(r) => {
                     result += &format!("{} ", r.rf);
-                    continue
-                },
+                    continue;
+                }
                 None => {}
             }
             match consts.find(|c| c.argument_pos == (i as u8)) {
@@ -256,21 +266,21 @@ impl InstructionData {
                         ArgumentTypes::Register16 => {
                             let name = match registers.get_name16(c.value as u8) {
                                 Some(s) => s,
-                                None => "(UREG)"
+                                None => "(UREG)",
                             };
                             result += &format!("{} ", name);
                         }
                         ArgumentTypes::Register32 => {
                             let name = match registers.get_name32(c.value as u8) {
                                 Some(s) => s,
-                                None => "(UREG)"
+                                None => "(UREG)",
                             };
                             result += &format!("{} ", name);
                         }
                         ArgumentTypes::Register8 => {
                             let name = match registers.get_name8(c.value as u8) {
                                 Some(s) => s,
-                                None => "(UREG)"
+                                None => "(UREG)",
                             };
                             result += &format!("{} ", name);
                         }
@@ -278,7 +288,7 @@ impl InstructionData {
                             result += &format!("{:#04x} ({:?}) ", c.value as u32, c.size);
                         }
                     }
-                    continue
+                    continue;
                 }
                 None => {}
             }
@@ -340,7 +350,7 @@ impl ObjectLabelSymbol {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinaryReference {
     pub rf: String,
-    pub size: ConstantSize
+    pub size: ConstantSize,
 }
 
 impl BinaryReference {
@@ -348,8 +358,10 @@ impl BinaryReference {
         let size = match ConstantSize::from_u8(binary.read_u8()?) {
             Some(s) => s,
             None => {
-                return Err(Error::new(io::ErrorKind::InvalidData,
-                format!("Error occured loading BinaryConstant: invalid size")))
+                return Err(Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Error occured loading BinaryConstant: invalid size"),
+                ));
             }
         };
 
@@ -364,9 +376,10 @@ impl BinaryReference {
 
         Ok(Self {
             size,
-            rf: String::from_utf8(char_vec).unwrap()
+            rf: String::from_utf8(char_vec).unwrap(),
         })
     }
+
     fn write_bytes(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
         binary.write_u8(self.size.to_u8())?;
 
@@ -387,7 +400,7 @@ impl BinaryReference {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinaryConstant {
     pub size: ConstantSize,
-    pub value: i64
+    pub value: i64,
 }
 
 impl BinaryConstant {
@@ -399,13 +412,16 @@ impl BinaryConstant {
             size: match ConstantSize::from_u8(size) {
                 Some(s) => s,
                 None => {
-                    return Err(Error::new(io::ErrorKind::InvalidData,
-                    format!("Error occured loading BinaryConstant: invalid size")))
+                    return Err(Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("Error occured loading BinaryConstant: invalid size"),
+                    ));
                 }
             },
-            value
+            value,
         })
     }
+
     fn write_binary(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
         binary.write_u8(self.size.to_u8())?;
         binary.write_i64::<LittleEndian>(self.value)?;
@@ -422,7 +438,7 @@ impl BinaryConstant {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinaryUnit {
     pub reference: Option<BinaryReference>,
-    pub constant: Option<BinaryConstant>
+    pub constant: Option<BinaryConstant>,
 }
 
 impl BinaryUnit {
@@ -435,29 +451,29 @@ impl BinaryUnit {
             None
         }
     }
+
     fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
         let mut me = Self {
             reference: None,
-            constant: None
+            constant: None,
         };
-        
+
         let typ = binary.read_u8()?;
 
         match typ {
-            0 => {
-                me.constant = Some(BinaryConstant::from_bytes(binary)?)
-            },
-            1 => {
-                me.reference = Some(BinaryReference::from_bytes(binary)?)
-            },
+            0 => me.constant = Some(BinaryConstant::from_bytes(binary)?),
+            1 => me.reference = Some(BinaryReference::from_bytes(binary)?),
             _ => {
-                return Err(Error::new(io::ErrorKind::InvalidData, 
-                    format!("Invalid type for binary unit. Bad format specified.")))
+                return Err(Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Invalid type for binary unit. Bad format specified."),
+                ));
             }
         }
 
         Ok(me)
     }
+
     fn write_bytes(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
         if let Some(cst) = &self.constant {
             binary.write_u8(0)?;
@@ -466,8 +482,10 @@ impl BinaryUnit {
             binary.write_u8(1)?;
             reference.write_bytes(binary)?;
         } else {
-            return Err(Error::new(io::ErrorKind::InvalidData, 
-                format!("BinaryUnit without information!")))
+            return Err(Error::new(
+                io::ErrorKind::InvalidData,
+                format!("BinaryUnit without information!"),
+            ));
         }
         Ok(())
     }
@@ -488,9 +506,9 @@ pub struct SectionData {
     name: String,
     pub instructions: Vec<InstructionData>,
     pub labels: HashMap<String, ObjectLabelSymbol>,
-//    pub binary_data: Vec<u8>,
+    //    pub binary_data: Vec<u8>,
     pub binary_data: Vec<BinaryUnit>,
-    pub binary_section: bool
+    pub binary_section: bool,
 }
 
 impl SectionData {
@@ -500,20 +518,23 @@ impl SectionData {
             instructions: Vec::new(),
             labels: HashMap::new(),
             binary_data: Vec::new(),
-            binary_section: false
+            binary_section: false,
         }
     }
+
     pub fn append_other(&mut self, mut other: SectionData) -> Result<(), String> {
         if self.binary_section != other.binary_section {
-            return Err(format!("Cannot merge binary section with non-binary one"))
+            return Err(format!("Cannot merge binary section with non-binary one"));
         }
         if self.binary_section {
             let old_bin_length = self.binary_data.len() as u64;
             self.binary_data.append(&mut other.binary_data);
-            
+
             for (label_name, mut label) in other.labels {
                 if self.labels.contains_key(&label_name) {
-                    return Err(format!("Cannot merge two binary sections with similar labels!"))
+                    return Err(format!(
+                        "Cannot merge two binary sections with similar labels!"
+                    ));
                 }
                 label.ptr += old_bin_length;
                 self.labels.insert(label_name, label);
@@ -521,10 +542,12 @@ impl SectionData {
         } else {
             let old_instr_length = self.instructions.len() as u64;
             self.instructions.append(&mut other.instructions);
-            
+
             for (label_name, mut label) in other.labels {
                 if self.labels.contains_key(&label_name) {
-                    return Err(format!("Cannot merge two binary sections with similar labels!"))
+                    return Err(format!(
+                        "Cannot merge two binary sections with similar labels!"
+                    ));
                 }
                 label.ptr += old_instr_length;
                 self.labels.insert(label_name, label);
@@ -543,7 +566,7 @@ impl SectionData {
                 binary_len += unit.get_size().unwrap();
             }
 
-            return binary_len
+            return binary_len;
         }
 
         let instructions = Instructions::new();
@@ -552,7 +575,10 @@ impl SectionData {
 
         for instr in self.instructions.iter() {
             // Unwrap, because we assume a section is valid from object file
-            binary_len += instructions.get_instruction(instr.opcode).unwrap().get_size();
+            binary_len += instructions
+                .get_instruction(instr.opcode)
+                .unwrap()
+                .get_size();
         }
 
         binary_len
@@ -563,12 +589,14 @@ impl SectionData {
             let mut binary_index = 0;
 
             for (i, unit) in self.binary_data.iter().enumerate() {
-                if i as u64 == index { break }
+                if i as u64 == index {
+                    break;
+                }
                 // unwrap because we assume this is valid from object file
                 binary_index += unit.get_size().unwrap();
             }
 
-            return binary_index as u64
+            return binary_index as u64;
         }
 
         let instructions = Instructions::new();
@@ -576,9 +604,14 @@ impl SectionData {
         let mut binary_index = 0u64;
 
         for (idx, instr) in self.instructions.iter().enumerate() {
-            if idx as u64 == index { break }
+            if idx as u64 == index {
+                break;
+            }
             // I won't explain why I'm adding unwraps anymore
-            binary_index += instructions.get_instruction(instr.opcode).unwrap().get_size() as u64;
+            binary_index += instructions
+                .get_instruction(instr.opcode)
+                .unwrap()
+                .get_size() as u64;
         }
 
         binary_index
@@ -587,7 +620,9 @@ impl SectionData {
     pub fn get_label_binary_offset(&self, label_name: &str) -> Option<u64> {
         let label = self.labels.get(label_name)?;
 
-        if self.binary_section { return Some(label.ptr) }
+        if self.binary_section {
+            return Some(label.ptr);
+        }
 
         Some(self.get_binary_position(label.ptr))
     }
@@ -616,9 +651,13 @@ impl SectionData {
             let name = label.name.clone();
 
             if me.labels.contains_key(&name) {
-                return Err(Error::new(io::ErrorKind::InvalidData,
-                format!("Invalid label information for section '{}'! Label '{}' already exists!",
-                me.name, name)))
+                return Err(Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "Invalid label information for section '{}'! Label '{}' already exists!",
+                        me.name, name
+                    ),
+                ));
             }
 
             me.labels.insert(label.name.clone(), label);
@@ -638,10 +677,13 @@ impl SectionData {
 
         Ok(me)
     }
+
     fn write_bytes(&self, binary: &mut Vec<u8>) -> Result<(), Error> {
         if self.binary_data.len() != 0 && self.instructions.len() != 0 {
-            return Err(Error::new(io::ErrorKind::InvalidInput,
-                format!("Binary and instructions cannot coexist in a single section!")))
+            return Err(Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Binary and instructions cannot coexist in a single section!"),
+            ));
         }
 
         binary.write_u64::<LittleEndian>(self.instructions.len() as u64)?;
@@ -691,7 +733,7 @@ impl ObjectFormatHeader {
         Self {
             magic: MAGIC_FORMAT_NUMBER,
             sections_length: 0,
-            version: CURRENT_FORMAT_VERSION
+            version: CURRENT_FORMAT_VERSION,
         }
     }
     fn from_bytes(binary: &mut &[u8]) -> Result<Self, Error> {
@@ -700,8 +742,10 @@ impl ObjectFormatHeader {
         me.magic = binary.read_u64::<LittleEndian>()?;
 
         if me.magic != MAGIC_FORMAT_NUMBER {
-            return Err(Error::new(io::ErrorKind::InvalidData, 
-                format!("Invalid magic number! Invalid format specified!")));
+            return Err(Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Invalid magic number! Invalid format specified!"),
+            ));
         }
 
         me.sections_length = binary.read_u64::<LittleEndian>()?;
@@ -720,14 +764,14 @@ impl ObjectFormatHeader {
 
 #[derive(Debug, Clone)]
 pub struct Define {
-    pub node: ParserNode
+    pub node: ParserNode,
 }
 
 /**
  * Binary format description:
  * # HEADER
  * # SECTIONS
- * 
+ *
  * A tightly packed data structure
  */
 
@@ -743,6 +787,7 @@ pub struct ObjectFormat {
 const DEFAULT_SECTION_NAME: &str = "text";
 
 impl ObjectFormat {
+    // CIs
     fn evaluate_expression(&self, _expr: &ParserNode) -> Result<ParserNode, String> {
         match &_expr.node_type {
             NodeType::ConstFloat(_) => Ok(_expr.clone()),
@@ -754,13 +799,13 @@ impl ObjectFormat {
                 if let Some(define_symbol) = opt_define_symbol {
                     return self.define_resolve(define_symbol, 0);
                 } else {
-                    return Err(format!("Failed to resolve identifier '{name}'."))
+                    return Err(format!("Failed to resolve identifier '{name}'."));
                 }
             }
-            NodeType::Expression(ExpressionType::Binary(operation)) => {                
+            NodeType::Expression(ExpressionType::Binary(operation)) => {
                 let lhs = &_expr.children[0];
                 let rhs = &_expr.children[1];
-                
+
                 let lhs = self.evaluate_expression(lhs)?;
                 let rhs = self.evaluate_expression(rhs)?;
                 match (&lhs.node_type, &rhs.node_type) {
@@ -773,7 +818,7 @@ impl ObjectFormat {
                                 BinaryOp::Division => n / m,
                             }),
                             children: vec![],
-                        })
+                        });
                     }
                     (NodeType::ConstFloat(n), NodeType::ConstFloat(m)) => {
                         return Ok(ParserNode {
@@ -784,41 +829,38 @@ impl ObjectFormat {
                                 BinaryOp::Division => n / m,
                             }),
                             children: vec![],
-                        })
+                        });
                     }
-                    _ => return Err(format!("Cannod add {:?} and {:?}.", lhs.node_type, rhs.node_type))
+                    _ => {
+                        return Err(format!(
+                            "Cannod add {:?} and {:?}.",
+                            lhs.node_type, rhs.node_type
+                        ));
+                    }
                 }
             }
             NodeType::Expression(ExpressionType::Unary(operation)) => {
                 match operation {
-                    UnaryOp::Identity => {
-                        return Ok(_expr.children[0].clone())
-                    }
+                    UnaryOp::Identity => return Ok(_expr.children[0].clone()),
                     UnaryOp::Negate => {
                         let child = &_expr.children[0];
                         let result = self.evaluate_expression(child)?;
                         // NOTE: Node type shouldn't be Expression after evaluating!
                         match result.node_type {
-                            NodeType::ConstInteger(n) => {
-                                Ok(ParserNode {
-                                    node_type: NodeType::ConstInteger(-n),
-                                    children: vec![],
-                                })
-                            }
-                            NodeType::ConstFloat(n) => {
-                                Ok(ParserNode {
-                                    node_type: NodeType::ConstFloat(-n),
-                                    children: vec![],
-                                })
-                            }
-                            _ => Err(format!("Cannot negate node {:?}", result.node_type))
+                            NodeType::ConstInteger(n) => Ok(ParserNode {
+                                node_type: NodeType::ConstInteger(-n),
+                                children: vec![],
+                            }),
+                            NodeType::ConstFloat(n) => Ok(ParserNode {
+                                node_type: NodeType::ConstFloat(-n),
+                                children: vec![],
+                            }),
+                            _ => Err(format!("Cannot negate node {:?}", result.node_type)),
                         }
                     }
                 }
             }
-            _ => {
-                return Err(format!("Not an expression! Compiler bug?"))
-            }
+            _ => return Err(format!("Not an expression! Compiler bug?")),
         }
     }
 
@@ -826,9 +868,7 @@ impl ObjectFormat {
     fn _section_ci(&mut self, children: &Vec<ParserNode>) -> Result<(), String> {
         let child = match children.get(0) {
             Some(n) => n,
-            None => {
-                return Err(format!("Expected argument for 'section'"))
-            }
+            None => return Err(format!("Expected argument for 'section'")),
         };
         match &child.node_type {
             NodeType::String(name) => {
@@ -844,35 +884,30 @@ impl ObjectFormat {
 
                 Ok(())
             }
-            _ => wrong_argument!(child, NodeType::String("".to_string()))
+            _ => wrong_argument!(child, NodeType::String("".to_string())),
         }
     }
     fn _define_ci(&mut self, children: &Vec<ParserNode>) -> Result<(), String> {
         let name_node = match children.get(0) {
             Some(n) => n,
-            None => {
-                return Err(format!("Expected argument 0 for 'define'"))
-            }
+            None => return Err(format!("Expected argument 0 for 'define'")),
         };
         let data = match children.get(1) {
             Some(n) => n,
-            None => {
-                return Err(format!("Expected argument 1 for 'define'"))
-            }
+            None => return Err(format!("Expected argument 1 for 'define'")),
         };
         let name = match &name_node.node_type {
             NodeType::Identifier(name) => name,
-            _ => wrong_argument!(name_node, NodeType::String(String::new()))
+            _ => wrong_argument!(name_node, NodeType::String(String::new())),
         };
         match &data.node_type {
             NodeType::Expression(_) => {
                 let n = self.evaluate_expression(data)?;
-                self.defines.insert(name.clone(), Define {
-                    node: n
-                });
+                self.defines.insert(name.clone(), Define { node: n });
             }
             _ => {
-                self.defines.insert(name.clone(), Define { node: data.clone() });
+                self.defines
+                    .insert(name.clone(), Define { node: data.clone() });
             }
         }
         Ok(())
@@ -881,16 +916,21 @@ impl ObjectFormat {
         let sec = match self.sections.get_mut(&self.current_section) {
             Some(s) => s,
             None => {
-                return Err(format!("Section '{}' not found! Maybe compiler bug?", self.current_section))
+                return Err(format!(
+                    "Section '{}' not found! Maybe compiler bug?",
+                    self.current_section
+                ));
             }
         };
 
         if sec.instructions.len() != 0 {
-            return Err(format!("Trying to add binary into section with instructions!"))
+            return Err(format!(
+                "Trying to add binary into section with instructions!"
+            ));
         }
 
         if children.len() == 0 {
-            return Err(format!("Arguments expected for compiler instruction 'db'"))
+            return Err(format!("Arguments expected for compiler instruction 'db'"));
         }
 
         sec.binary_section = true;
@@ -902,8 +942,8 @@ impl ObjectFormat {
                         constant: None,
                         reference: Some(BinaryReference {
                             size: ConstantSize::Byte,
-                            rf: sym_name.clone()
-                        })
+                            rf: sym_name.clone(),
+                        }),
                     });
                 }
                 NodeType::ConstInteger(num) => {
@@ -911,25 +951,25 @@ impl ObjectFormat {
                         sec.binary_data.push(BinaryUnit {
                             constant: Some(BinaryConstant {
                                 size: ConstantSize::Byte,
-                                value: *num
+                                value: *num,
                             }),
-                            reference: None
+                            reference: None,
                         });
                     } else if *num < 65536 {
                         sec.binary_data.push(BinaryUnit {
                             constant: Some(BinaryConstant {
                                 size: ConstantSize::Word,
-                                value: *num
+                                value: *num,
                             }),
-                            reference: None
+                            reference: None,
                         });
                     } else {
                         sec.binary_data.push(BinaryUnit {
                             constant: Some(BinaryConstant {
                                 size: ConstantSize::DoubleWord,
-                                value: *num
+                                value: *num,
                             }),
-                            reference: None
+                            reference: None,
                         });
                     }
                 }
@@ -939,13 +979,13 @@ impl ObjectFormat {
                         sec.binary_data.push(BinaryUnit {
                             constant: Some(BinaryConstant {
                                 size: ConstantSize::Byte,
-                                value: b as i64
+                                value: b as i64,
                             }),
-                            reference: None
+                            reference: None,
                         });
                     }
                 }
-                _ => unexpected_node!(child)
+                _ => unexpected_node!(child),
             }
         }
 
@@ -955,21 +995,26 @@ impl ObjectFormat {
         let sec = match self.sections.get_mut(&self.current_section) {
             Some(s) => s,
             None => {
-                return Err(format!("Section '{}' not found! Maybe compiler bug?", self.current_section))
+                return Err(format!(
+                    "Section '{}' not found! Maybe compiler bug?",
+                    self.current_section
+                ));
             }
         };
 
         if sec.instructions.len() != 0 {
-            return Err(format!("Trying to add binary into section with instructions!"))
+            return Err(format!(
+                "Trying to add binary into section with instructions!"
+            ));
         }
 
         sec.binary_section = true;
 
         let mut binary = Vec::<BinaryUnit>::new();
 
-        let child_node = match children.get(0) { 
+        let child_node = match children.get(0) {
             Some(c) => c,
-            None => unexpected_eof!("RESB instruction requires 1 argument, 0 provided")
+            None => unexpected_eof!("RESB instruction requires 1 argument, 0 provided"),
         };
 
         if let NodeType::ConstInteger(n) = child_node.node_type {
@@ -978,8 +1023,8 @@ impl ObjectFormat {
                     reference: None,
                     constant: Some(BinaryConstant {
                         size: ConstantSize::Byte,
-                        value: 0
-                    })
+                        value: 0,
+                    }),
                 });
             }
         }
@@ -993,37 +1038,43 @@ impl ObjectFormat {
         let sec = match self.sections.get_mut(&self.current_section) {
             Some(s) => s,
             None => {
-                return Err(format!("Section '{}' not found! Maybe compiler bug?", self.current_section))
+                return Err(format!(
+                    "Section '{}' not found! Maybe compiler bug?",
+                    self.current_section
+                ));
             }
         };
 
         if !sec.binary_section || sec.instructions.len() != 0 {
-            return Err(format!("Trying to add binary into section with instructions!"))
+            return Err(format!(
+                "Trying to add binary into section with instructions!"
+            ));
         }
 
-        let child_node = match children.get(0) { 
+        let child_node = match children.get(0) {
             Some(c) => c,
-            None => unexpected_eof!("DATA instruction requires 1 argument, 0 provided")
+            None => unexpected_eof!("DATA instruction requires 1 argument, 0 provided"),
         };
 
         if let NodeType::String(path) = &child_node.node_type {
             let data = match fs::read(path) {
                 Ok(d) => d,
-                Err(e) => {
-                    return Err(format!("Error occured while reading file: {e}"))
-                }
+                Err(e) => return Err(format!("Error occured while reading file: {e}")),
             };
             for b in data {
                 sec.binary_data.push(BinaryUnit {
                     reference: None,
                     constant: Some(BinaryConstant {
                         size: ConstantSize::Byte,
-                        value: b as i64
-                    })
+                        value: b as i64,
+                    }),
                 })
             }
         } else {
-            return Err(format!("DATA instruction takes String. {:?} provided", child_node.node_type))
+            return Err(format!(
+                "DATA instruction takes String. {:?} provided",
+                child_node.node_type
+            ));
         }
 
         Ok(())
@@ -1033,16 +1084,21 @@ impl ObjectFormat {
         let sec = match self.sections.get_mut(&self.current_section) {
             Some(s) => s,
             None => {
-                return Err(format!("Section '{}' not found! Maybe compiler bug?", self.current_section))
+                return Err(format!(
+                    "Section '{}' not found! Maybe compiler bug?",
+                    self.current_section
+                ));
             }
         };
 
         if sec.instructions.len() != 0 {
-            return Err(format!("Trying to add binary into section with instructions!"))
+            return Err(format!(
+                "Trying to add binary into section with instructions!"
+            ));
         }
 
         if children.len() == 0 {
-            return Err(format!("Arguments expected for compiler instruction 'db'"))
+            return Err(format!("Arguments expected for compiler instruction 'db'"));
         }
 
         sec.binary_section = true;
@@ -1054,8 +1110,8 @@ impl ObjectFormat {
                         constant: None,
                         reference: Some(BinaryReference {
                             size: ConstantSize::DoubleWord,
-                            rf: sym_name.clone()
-                        })
+                            rf: sym_name.clone(),
+                        }),
                     });
                 }
                 NodeType::ConstInteger(num) => {
@@ -1063,8 +1119,8 @@ impl ObjectFormat {
                         reference: None,
                         constant: Some(BinaryConstant {
                             size: ConstantSize::DoubleWord,
-                            value: *num
-                        })
+                            value: *num,
+                        }),
                     });
                 }
                 NodeType::Expression(_) => {
@@ -1076,12 +1132,12 @@ impl ObjectFormat {
                             reference: None,
                             constant: Some(BinaryConstant {
                                 size: ConstantSize::DoubleWord,
-                                value: b as i64
-                            })
+                                value: b as i64,
+                            }),
                         });
                     }
                 }
-                _ => unexpected_node!(child)
+                _ => unexpected_node!(child),
             }
         }
 
@@ -1092,16 +1148,21 @@ impl ObjectFormat {
         let sec = match self.sections.get_mut(&self.current_section) {
             Some(s) => s,
             None => {
-                return Err(format!("Section '{}' not found! Maybe compiler bug?", self.current_section))
+                return Err(format!(
+                    "Section '{}' not found! Maybe compiler bug?",
+                    self.current_section
+                ));
             }
         };
 
         if sec.instructions.len() != 0 {
-            return Err(format!("Trying to add binary into section with instructions!"))
+            return Err(format!(
+                "Trying to add binary into section with instructions!"
+            ));
         }
 
         if children.len() == 0 {
-            return Err(format!("Arguments expected for compiler instruction 'db'"))
+            return Err(format!("Arguments expected for compiler instruction 'db'"));
         }
 
         sec.binary_section = true;
@@ -1113,8 +1174,8 @@ impl ObjectFormat {
                         constant: None,
                         reference: Some(BinaryReference {
                             size: ConstantSize::Word,
-                            rf: sym_name.clone()
-                        })
+                            rf: sym_name.clone(),
+                        }),
                     });
                 }
                 NodeType::ConstInteger(num) => {
@@ -1122,8 +1183,8 @@ impl ObjectFormat {
                         reference: None,
                         constant: Some(BinaryConstant {
                             size: ConstantSize::Word,
-                            value: *num
-                        })
+                            value: *num,
+                        }),
                     });
                 }
                 NodeType::Expression(_) => todo!(),
@@ -1133,20 +1194,383 @@ impl ObjectFormat {
                             reference: None,
                             constant: Some(BinaryConstant {
                                 size: ConstantSize::Word,
-                                value: b as i64
-                            })
+                                value: b as i64,
+                            }),
                         });
                     }
                 }
-                _ => unexpected_node!(child)
+                _ => unexpected_node!(child),
             }
         }
 
         Ok(())
     }
-    
-    // End compiler instructions
+}
 
+impl ObjectFormat {
+    // Private fns
+    fn generate_binary(&self) -> Result<Vec<u8>, String> {
+        let mut binary = Vec::<u8>::new();
+
+        match self.header.write_bytes(&mut binary) {
+            Ok(_) => {}
+            Err(e) => {
+                return Err(format!(
+                    "Error occured while generating binary header: {}",
+                    e
+                ));
+            }
+        }
+
+        for (sec_name, sec) in self.sections.iter() {
+            match sec.write_bytes(&mut binary) {
+                Ok(_) => {}
+                Err(e) => {
+                    return Err(format!(
+                        "Error occured while generating \
+                    binary for section '{}': {}",
+                        sec_name, e
+                    ));
+                }
+            }
+        }
+
+        Ok(binary)
+    }
+
+    fn do_compiler_instruction(
+        &mut self,
+        name: &str,
+        children: &Vec<ParserNode>,
+    ) -> Result<(), String> {
+        let instr = match self.compiler_instructions.get(name) {
+            Some(i) => i,
+            None => bad_compinstr!(name),
+        };
+        instr(self, children)
+    }
+
+    // function-like
+    fn define_resolve(&self, define_symbol: &Define, depth: i32) -> Result<ParserNode, String> {
+        match &define_symbol.node.node_type {
+            NodeType::ConstFloat(_) | NodeType::ConstInteger(_) => Ok(define_symbol.node.clone()),
+            NodeType::Identifier(iden) => {
+                if depth > 100 {
+                    return Err(format!("Max define depth of 100 reached!"));
+                }
+                if self.defines.contains_key(iden) {
+                    return Ok(self.define_resolve(&self.defines[iden], depth + 1)?);
+                }
+
+                return Err(format!("Failed to resolve define with name '{iden}'."));
+            }
+            _ => todo!("Add useful error message"),
+        }
+    }
+
+    fn resolve_define(
+        &self,
+        arg: usize,
+        instr: &mut InstructionData,
+        expected_argument: &ArgumentTypes,
+        define_symbol: &Define,
+        depth: i32,
+    ) -> Result<(), String> {
+        if let NodeType::Identifier(iden) = &define_symbol.node.node_type {
+            if depth > 100 {
+                return Err(format!("Max define depth of 100 reached!"));
+            }
+            if self.defines.contains_key(iden) {
+                self.resolve_define(
+                    arg,
+                    instr,
+                    expected_argument,
+                    &self.defines[iden],
+                    depth + 1,
+                )?;
+                return Ok(());
+            }
+        }
+        match expected_argument {
+            ArgumentTypes::FloatingPoint
+            | ArgumentTypes::AbsPointer
+            | ArgumentTypes::RelPointer
+            | ArgumentTypes::Immediate32 => match &define_symbol.node.node_type {
+                NodeType::ConstInteger(n) => {
+                    instr.constants.push(Constant {
+                        argument_pos: arg as u8,
+                        size: ConstantSize::DoubleWord,
+                        value: *n,
+                    });
+                }
+                NodeType::ConstFloat(n) => {
+                    instr.constants.push(Constant {
+                        argument_pos: arg as u8,
+                        size: ConstantSize::DoubleWord,
+                        value: (*n).to_bits() as i64,
+                    });
+                }
+                _ => unexpected_node!(define_symbol.node),
+            },
+            ArgumentTypes::Immediate16 => match &define_symbol.node.node_type {
+                NodeType::ConstInteger(n) => {
+                    instr.constants.push(Constant {
+                        argument_pos: arg as u8,
+                        size: ConstantSize::Word,
+                        value: *n & 0xFFFF,
+                    });
+                }
+                _ => unexpected_node!(define_symbol.node),
+            },
+            ArgumentTypes::Immediate8 => match &define_symbol.node.node_type {
+                NodeType::ConstInteger(n) => {
+                    instr.constants.push(Constant {
+                        argument_pos: arg as u8,
+                        size: ConstantSize::Byte,
+                        value: *n & 0xFF,
+                    });
+                }
+                _ => unexpected_node!(define_symbol.node),
+            },
+            _ => unexpected_node!(define_symbol.node),
+        }
+        Ok(())
+    }
+
+    fn resolve_instruction(
+        &self,
+        arg: &ParserNode,
+        instr: &mut InstructionData,
+        expected_argument: &ArgumentTypes,
+        index: usize,
+        current_label: &str,
+    ) -> Result<(), String> {
+        let conditions = Conditions::new();
+        let registers = Registers::new();
+
+        match &arg.node_type {
+            NodeType::Expression(_) => {
+                let expression_result = self.evaluate_expression(&arg)?;
+
+                match expression_result.node_type {
+                    NodeType::ConstFloat(n) => match expected_argument {
+                        ArgumentTypes::FloatingPoint | ArgumentTypes::Immediate32 => {
+                            instr.constants.push(Constant {
+                                argument_pos: index as u8,
+                                size: ConstantSize::DoubleWord,
+                                value: n.to_bits() as i64,
+                            });
+                        }
+                        _ => unexpected_node!(arg),
+                    },
+                    NodeType::ConstInteger(n) => match expected_argument {
+                        ArgumentTypes::AbsPointer
+                        | ArgumentTypes::RelPointer
+                        | ArgumentTypes::Immediate32 => {
+                            instr.constants.push(Constant {
+                                argument_pos: index as u8,
+                                size: ConstantSize::DoubleWord,
+                                value: n as i64,
+                            });
+                        }
+                        ArgumentTypes::Immediate16 => {
+                            instr.constants.push(Constant {
+                                argument_pos: index as u8,
+                                size: ConstantSize::Word,
+                                value: (n & 0xFFFF) as i64,
+                            });
+                        }
+                        ArgumentTypes::Immediate8 => {
+                            instr.constants.push(Constant {
+                                argument_pos: index as u8,
+                                size: ConstantSize::Byte,
+                                value: (n & 0xFF) as i64,
+                            });
+                        }
+                        _ => unexpected_node!(arg),
+                    },
+                    _ => panic!("Compiler error: expression evaluated some garbage"),
+                }
+            }
+            NodeType::Identifier(identifier_name) => {
+                if self.defines.contains_key(identifier_name) {
+                    let define_symbol = &self.defines[identifier_name];
+
+                    self.resolve_define(index, instr, &expected_argument, define_symbol, 0)?;
+                } else {
+                    match expected_argument {
+                        ArgumentTypes::Condition => {
+                            let cond = match conditions.get_condition(identifier_name) {
+                                Some(c) => c,
+                                None => unexpected_node!(arg),
+                            };
+                            instr.constants.push(Constant {
+                                argument_pos: index as u8,
+                                size: ConstantSize::Byte,
+                                value: *cond as i64,
+                            });
+                        }
+                        _ => {
+                            let mut identifier = identifier_name.clone();
+                            if identifier.starts_with('@') {
+                                identifier = current_label.to_string() + &identifier;
+                            } else if identifier == "@" {
+                                identifier = current_label.to_string();
+                            }
+                            instr.references.push(Reference {
+                                argument_pos: index as u8,
+                                rf: identifier,
+                            })
+                        }
+                    }
+                }
+            }
+            NodeType::ConstFloat(n) => match expected_argument {
+                ArgumentTypes::FloatingPoint | ArgumentTypes::Immediate32 => {
+                    instr.constants.push(Constant {
+                        argument_pos: index as u8,
+                        size: ConstantSize::DoubleWord,
+                        value: (*n).to_bits() as i64,
+                    });
+                }
+                _ => unexpected_node!(arg),
+            },
+            NodeType::ConstInteger(n) => match expected_argument {
+                ArgumentTypes::AbsPointer
+                | ArgumentTypes::RelPointer
+                | ArgumentTypes::Immediate32 => {
+                    instr.constants.push(Constant {
+                        argument_pos: index as u8,
+                        size: ConstantSize::DoubleWord,
+                        value: *n as i64,
+                    });
+                }
+                ArgumentTypes::Immediate16 => {
+                    instr.constants.push(Constant {
+                        argument_pos: index as u8,
+                        size: ConstantSize::Word,
+                        value: (*n & 0xFFFF) as i64,
+                    });
+                }
+                ArgumentTypes::Immediate8 => {
+                    instr.constants.push(Constant {
+                        argument_pos: index as u8,
+                        size: ConstantSize::Byte,
+                        value: (*n & 0xFF) as i64,
+                    });
+                }
+                _ => unexpected_node!(arg),
+            },
+            NodeType::Register(name) => match expected_argument {
+                ArgumentTypes::Register16 => {
+                    instr.constants.push(Constant {
+                        argument_pos: index as u8,
+                        size: ConstantSize::Byte,
+                        value: match registers.get16(name) {
+                            Some(r) => *r as i64,
+                            None => {
+                                return Err(format!(
+                                    "Invalid 16 bit register \
+                                    name '{}'.",
+                                    name
+                                ));
+                            }
+                        },
+                    });
+                }
+                ArgumentTypes::Register32 => {
+                    instr.constants.push(Constant {
+                        argument_pos: index as u8,
+                        size: ConstantSize::Byte,
+                        value: match registers.get32(name) {
+                            Some(r) => *r as i64,
+                            None => {
+                                return Err(format!(
+                                    "Invalid 32 bit register \
+                                    name '{}'.",
+                                    name
+                                ));
+                            }
+                        },
+                    });
+                }
+                ArgumentTypes::Register8 => {
+                    instr.constants.push(Constant {
+                        argument_pos: index as u8,
+                        size: ConstantSize::Byte,
+                        value: match registers.get8(name) {
+                            Some(r) => *r as i64,
+                            None => {
+                                return Err(format!(
+                                    "Invalid 8 bit register \
+                                    name '{}'.",
+                                    name
+                                ));
+                            }
+                        },
+                    });
+                }
+                _ => unexpected_node!(arg),
+            },
+            _ => unexpected_node!(arg),
+        }
+        Ok(())
+    }
+
+    fn process_instruction(
+        &mut self,
+        name: &str,
+        children: &Vec<ParserNode>,
+        current_label: &str,
+    ) -> Result<(), String> {
+        let instructions = Instructions::new();
+
+        let opcode = match instructions.get_opcode(name) {
+            Some(opc) => opc,
+            None => return Err(format!("Invalid instruction '{}'!", name)),
+        };
+        let instruction = instructions.get_instruction(opcode).unwrap();
+
+        if instruction.args.len() != children.len() {
+            return Err(format!(
+                "Argument count for instruction '{}' ({}) is incorrect! {} expected!",
+                name,
+                children.len(),
+                instruction.args.len()
+            ));
+        }
+
+        let mut instr = InstructionData {
+            opcode,
+            references: Vec::new(),
+            constants: Vec::new(),
+        };
+
+        for i in 0..children.len() {
+            let arg = &children[i];
+            let expected_argument = instruction.args[i];
+
+            self.resolve_instruction(arg, &mut instr, &expected_argument, i, current_label)?;
+        }
+
+        match self.sections.get_mut(&self.current_section) {
+            Some(s) => s,
+            None => {
+                return Err(format!(
+                    "Section '{}' does not exist! Maybe compiler bug?",
+                    self.current_section
+                ));
+            }
+        }
+        .instructions
+        .push(instr);
+
+        Ok(())
+    }
+}
+
+impl ObjectFormat {
+    // Public API
     pub fn create_jumper(entrypoint: String) -> Self {
         let mut me = Self::new();
 
@@ -1155,9 +1579,9 @@ impl ObjectFormat {
             opcode: 12, // jpr opcode
             references: vec![Reference {
                 argument_pos: 0,
-                rf: entrypoint
+                rf: entrypoint,
             }],
-            constants: Vec::new()
+            constants: Vec::new(),
         });
         me.sections.insert(section.name.clone(), section);
 
@@ -1175,42 +1599,27 @@ impl ObjectFormat {
 
         let default_section = SectionData::new();
 
-        me.sections.insert(default_section.name.clone(), default_section);
+        me.sections
+            .insert(default_section.name.clone(), default_section);
 
         me.header.sections_length = 1;
 
-        me.compiler_instructions.insert("section".to_string(), ObjectFormat::_section_ci);
-        me.compiler_instructions.insert("define".to_string(), ObjectFormat::_define_ci);
-        me.compiler_instructions.insert("db".to_string(), ObjectFormat::_db_ci);
-        me.compiler_instructions.insert("resb".to_string(), ObjectFormat::_resb_ci);
-        me.compiler_instructions.insert("data".to_string(), ObjectFormat::_data_ci);
-        me.compiler_instructions.insert("dd".to_string(), ObjectFormat::_dd_ci);
-        me.compiler_instructions.insert("dw".to_string(), ObjectFormat::_dw_ci);
+        me.compiler_instructions
+            .insert("section".to_string(), ObjectFormat::_section_ci);
+        me.compiler_instructions
+            .insert("define".to_string(), ObjectFormat::_define_ci);
+        me.compiler_instructions
+            .insert("db".to_string(), ObjectFormat::_db_ci);
+        me.compiler_instructions
+            .insert("resb".to_string(), ObjectFormat::_resb_ci);
+        me.compiler_instructions
+            .insert("data".to_string(), ObjectFormat::_data_ci);
+        me.compiler_instructions
+            .insert("dd".to_string(), ObjectFormat::_dd_ci);
+        me.compiler_instructions
+            .insert("dw".to_string(), ObjectFormat::_dw_ci);
 
         me
-    }
-
-    fn generate_binary(&self) -> Result<Vec<u8>, String> {
-        let mut binary = Vec::<u8>::new();
-
-        match self.header.write_bytes(&mut binary) {
-            Ok(_) => {},
-            Err(e) => {
-                return Err(format!("Error occured while generating binary header: {}", e))
-            }
-        }
-
-        for (sec_name, sec) in self.sections.iter() {
-            match sec.write_bytes(&mut binary) {
-                Ok(_) => {},
-                Err(e) => {
-                    return Err(format!("Error occured while generating \
-                    binary for section '{}': {}", sec_name, e))
-                }
-            }
-        }
-
-        Ok(binary)
     }
 
     pub fn save_object(&self, path: &str) -> Result<(), String> {
@@ -1218,15 +1627,12 @@ impl ObjectFormat {
 
         let mut file = match fs::File::create(path) {
             Ok(f) => f,
-            Err(e) => {
-                return Err(format!("Failed to open file to write: {e}"))
-            }
+            Err(e) => return Err(format!("Failed to open file to write: {e}")),
         };
-        
+
         match file.write_all(binary.as_slice()) {
             Ok(_) => (),
-            Err(e) =>
-                return Err(format!("Failed to write binary to file: {}", e))
+            Err(e) => return Err(format!("Failed to write binary to file: {}", e)),
         }
 
         Ok(())
@@ -1237,28 +1643,24 @@ impl ObjectFormat {
 
         let mut binary_slice = bytes.as_slice();
 
-        let header_parse_result = 
-            ObjectFormatHeader::from_bytes(&mut binary_slice);
-        
+        let header_parse_result = ObjectFormatHeader::from_bytes(&mut binary_slice);
+
         me.header = match header_parse_result {
             Ok(header) => header,
-            Err(e) => {
-                return Err(format!("Error occured while parsing object file: {}", e))
-            }
+            Err(e) => return Err(format!("Error occured while parsing object file: {}", e)),
         };
 
         if me.header.version != CURRENT_FORMAT_VERSION {
-            println!("Warning: File version does not match with latest format \
-version! It may not be compatible!");
+            println!(
+                "Warning: File version does not match with latest format \
+version! It may not be compatible!"
+            );
         }
 
         for _ in 0..me.header.sections_length {
-            let section =
-            match SectionData::from_bytes(&mut binary_slice) {
+            let section = match SectionData::from_bytes(&mut binary_slice) {
                 Ok(section) => section,
-                Err(e) => {
-                    return Err(format!("Error occured while parsing section: {}", e))
-                }
+                Err(e) => return Err(format!("Error occured while parsing section: {}", e)),
             };
             me.sections.insert(section.name.clone(), section);
         }
@@ -1269,337 +1671,17 @@ version! It may not be compatible!");
     pub fn from_file(path: &str) -> Result<Self, String> {
         let content = match fs::read(path) {
             Ok(vc) => vc,
-            Err(e) => {
-                return Err(format!("Error occured while reading file:\n{}", e))
-            }
+            Err(e) => return Err(format!("Error occured while reading file:\n{}", e)),
         };
-        
+
         ObjectFormat::from_bytes(content)
-    }
-
-    fn do_compiler_instruction(&mut self, name: &str, children: &Vec<ParserNode>) -> Result<(), String> {
-        let instr = match self.compiler_instructions.get(name) {
-            Some(i) => i,
-            None => bad_compinstr!(name)
-        };
-        instr(self, children)
-    }
-
-    // function-like
-    fn define_resolve(&self, define_symbol: &Define, depth: i32) -> Result<ParserNode, String> {
-        match &define_symbol.node.node_type {
-            NodeType::ConstFloat(_) | NodeType::ConstInteger(_) => Ok(define_symbol.node.clone()),
-            NodeType::Identifier(iden) => {
-                if depth > 100 {
-                    return Err(format!("Max define depth of 100 reached!"))
-                }
-                if self.defines.contains_key(iden) {
-                    return Ok(self.define_resolve(&self.defines[iden], depth + 1)?)
-                }
-
-                return Err(format!("Failed to resolve define with name '{iden}'."))
-            }
-            _ => todo!("Add useful error message")
-        }
-    }
-
-    fn resolve_define(&self, arg: usize, instr: &mut InstructionData, expected_argument: &ArgumentTypes, define_symbol: &Define, depth: i32)
-        -> Result<(), String>
-    {
-        if let NodeType::Identifier(iden) = &define_symbol.node.node_type {
-            if depth > 100 {
-                return Err(format!("Max define depth of 100 reached!"))
-            }
-            if self.defines.contains_key(iden) {
-                self.resolve_define(
-                    arg,
-                    instr,
-                    expected_argument,
-                    &self.defines[iden],
-                    depth + 1
-                )?;
-                return Ok(())
-            }
-        }
-        match expected_argument {
-            ArgumentTypes::FloatingPoint |
-            ArgumentTypes::AbsPointer |
-            ArgumentTypes::RelPointer |
-            ArgumentTypes::Immediate32 => {
-                match &define_symbol.node.node_type {
-                    NodeType::ConstInteger(n) => {
-                        instr.constants.push(Constant { 
-                            argument_pos: arg as u8, 
-                            size: ConstantSize::DoubleWord, 
-                            value: *n
-                        });
-                    }
-                    NodeType::ConstFloat(n) => {
-                        instr.constants.push(Constant { 
-                            argument_pos: arg as u8,
-                            size: ConstantSize::DoubleWord,
-                            value: (*n).to_bits() as i64
-                        });
-                    }
-                    _ => unexpected_node!(define_symbol.node)
-                }
-            }
-            ArgumentTypes::Immediate16 => {
-                match &define_symbol.node.node_type {
-                    NodeType::ConstInteger(n) => {
-                        instr.constants.push(Constant { 
-                            argument_pos: arg as u8, 
-                            size: ConstantSize::Word,
-                            value: *n & 0xFFFF
-                        });
-                    }
-                    _ => unexpected_node!(define_symbol.node)
-                }
-            }
-            ArgumentTypes::Immediate8 => {
-                match &define_symbol.node.node_type {
-                    NodeType::ConstInteger(n) => {
-                        instr.constants.push(Constant { 
-                            argument_pos: arg as u8, 
-                            size: ConstantSize::Byte, 
-                            value: *n & 0xFF
-                        });
-                    }
-                    _ => unexpected_node!(define_symbol.node)
-                }
-            }
-            _ => unexpected_node!(define_symbol.node)
-        }
-        Ok(())
-    }
-
-    fn resolve_instruction(&self, 
-        arg: &ParserNode, 
-        instr: &mut InstructionData,
-        expected_argument: &ArgumentTypes,
-        index: usize,
-        current_label: &str
-    ) -> Result<(), String>
-    {
-        let conditions = Conditions::new();
-        let registers = Registers::new();
-
-        match &arg.node_type {
-            NodeType::Expression(_) => {
-                let expression_result = self.evaluate_expression(&arg)?;
-
-                match expression_result.node_type {
-                    NodeType::ConstFloat(n) => {
-                        match expected_argument {
-                            ArgumentTypes::FloatingPoint |
-                            ArgumentTypes::Immediate32 => {
-                                instr.constants.push(Constant {
-                                    argument_pos: index as u8,
-                                    size: ConstantSize::DoubleWord,
-                                    value: n.to_bits() as i64
-                                });
-                            }
-                            _ => unexpected_node!(arg)
-                        }
-                    }
-                    NodeType::ConstInteger(n) => {
-                        match expected_argument {
-                            ArgumentTypes::AbsPointer |
-                            ArgumentTypes::RelPointer |
-                            ArgumentTypes::Immediate32 => {
-                                instr.constants.push(Constant {
-                                    argument_pos: index as u8,
-                                    size: ConstantSize::DoubleWord,
-                                    value: n as i64
-                                });
-                            }
-                            ArgumentTypes::Immediate16 => {
-                                instr.constants.push(Constant {
-                                    argument_pos: index as u8,
-                                    size: ConstantSize::Word,
-                                    value: (n & 0xFFFF) as i64
-                                });
-                            }
-                            ArgumentTypes::Immediate8 => {
-                                instr.constants.push(Constant {
-                                    argument_pos: index as u8,
-                                    size: ConstantSize::Byte,
-                                    value: (n & 0xFF) as i64
-                                });
-                            }
-                            _ => unexpected_node!(arg)
-                        }
-                    }
-                    _ => panic!("Compiler error: expression evaluated some garbage")
-                }
-            }
-            NodeType::Identifier(identifier_name) => {
-                if self.defines.contains_key(identifier_name) {
-                    let define_symbol = &self.defines[identifier_name];
-
-                    self.resolve_define(index, instr, &expected_argument, define_symbol, 0)?;
-                } else {
-                    match expected_argument {
-                        ArgumentTypes::Condition => {
-                            let cond = match conditions.get_condition(identifier_name) {
-                                Some(c) => {c},
-                                None => unexpected_node!(arg)
-                            };
-                            instr.constants.push(Constant {
-                                argument_pos: index as u8,
-                                size: ConstantSize::Byte,
-                                value: *cond as i64
-                            });
-                        }
-                        _ => {
-                            let mut identifier = identifier_name.clone();
-                            if identifier.starts_with('@') {
-                                identifier = current_label.to_string() + &identifier;
-                            } else if identifier == "@" {
-                                identifier = current_label.to_string();
-                            }
-                            instr.references.push(Reference {
-                                argument_pos: index as u8,
-                                rf: identifier
-                            })
-                        }
-                    }
-                }
-            }
-            NodeType::ConstFloat(n) => {
-                match expected_argument {
-                    ArgumentTypes::FloatingPoint |
-                    ArgumentTypes::Immediate32 => {
-                        instr.constants.push(Constant {
-                            argument_pos: index as u8,
-                            size: ConstantSize::DoubleWord,
-                            value: (*n).to_bits() as i64
-                        });
-                    }
-                    _ => unexpected_node!(arg)
-                }
-            }
-            NodeType::ConstInteger(n) => {
-                match expected_argument {
-                    ArgumentTypes::AbsPointer |
-                    ArgumentTypes::RelPointer |
-                    ArgumentTypes::Immediate32 => {
-                        instr.constants.push(Constant {
-                            argument_pos: index as u8,
-                            size: ConstantSize::DoubleWord,
-                            value: *n as i64
-                        });
-                    }
-                    ArgumentTypes::Immediate16 => {
-                        instr.constants.push(Constant {
-                            argument_pos: index as u8,
-                            size: ConstantSize::Word,
-                            value: (*n & 0xFFFF) as i64
-                        });
-                    }
-                    ArgumentTypes::Immediate8 => {
-                        instr.constants.push(Constant {
-                            argument_pos: index as u8,
-                            size: ConstantSize::Byte,
-                            value: (*n & 0xFF) as i64
-                        });
-                    }
-                    _ => unexpected_node!(arg)
-                }
-            }
-            NodeType::Register(name) => {
-                match expected_argument {
-                    ArgumentTypes::Register16 => {
-                        instr.constants.push(Constant {
-                            argument_pos: index as u8,
-                            size: ConstantSize::Byte,
-                            value: match registers.get16(name) {
-                                Some(r) => *r as i64,
-                                None => {
-                                    return Err(format!("Invalid 16 bit register \
-                                    name '{}'.", name))
-                                }
-                            }
-                        });
-                    }
-                    ArgumentTypes::Register32 => {
-                        instr.constants.push(Constant {
-                            argument_pos: index as u8,
-                            size: ConstantSize::Byte,
-                            value: match registers.get32(name) {
-                                Some(r) => *r as i64,
-                                None => {
-                                    return Err(format!("Invalid 32 bit register \
-                                    name '{}'.", name))
-                                }
-                            }
-                        });
-                    }
-                    ArgumentTypes::Register8 => {
-                        instr.constants.push(Constant {
-                            argument_pos: index as u8,
-                            size: ConstantSize::Byte,
-                            value: match registers.get8(name) {
-                                Some(r) => *r as i64,
-                                None => {
-                                    return Err(format!("Invalid 8 bit register \
-                                    name '{}'.", name))
-                                }
-                            }
-                        });
-                    }
-                    _ => unexpected_node!(arg)
-                }
-            }
-            _ => unexpected_node!(arg)
-        }
-        Ok(())
-    }
-
-    fn process_instruction(&mut self, name: &str, children: &Vec<ParserNode>, current_label: &str) -> Result<(), String> {
-        let instructions = Instructions::new();
-
-        let opcode = match instructions.get_opcode(name) {
-            Some(opc) => opc,
-            None => {
-                return Err(format!("Invalid instruction '{}'!", name))
-            }
-        };
-        let instruction = instructions.get_instruction(opcode).unwrap();
-
-        if instruction.args.len() != children.len() {
-            return Err(format!("Argument count for instruction '{}' ({}) is incorrect! {} expected!",
-            name, children.len(), instruction.args.len()))
-        }
-
-        let mut instr = InstructionData {
-            opcode,
-            references: Vec::new(),
-            constants: Vec::new()
-        };
-
-        for i in 0..children.len() {
-            let arg = &children[i];
-            let expected_argument = instruction.args[i];
-
-            self.resolve_instruction(arg, &mut instr, &expected_argument, i, current_label)?;
-        }
-
-        match self.sections.get_mut(&self.current_section) {
-            Some(s) => s,
-            None => {
-                return Err(format!("Section '{}' does not exist! Maybe compiler bug?", self.current_section))
-            }
-        }.instructions.push(instr);
-        
-        Ok(())
     }
 
     pub fn load_parser_node(&mut self, node: &ParserNode) -> Result<(), String> {
         //let instructions = Instructions::new();
 
         if node.node_type != NodeType::Program {
-            return Err(format!("Cannot load not Program node into objgen"))
+            return Err(format!("Cannot load not Program node into objgen"));
         }
 
         let mut current_label = String::new();
@@ -1608,25 +1690,29 @@ version! It may not be compatible!");
             match &child.node_type {
                 NodeType::CompilerInstruction(instr) => {
                     match self.do_compiler_instruction(instr, &child.children) {
-                        Ok(_) => {},
+                        Ok(_) => {}
                         Err(e) => {
-                            return Err(format!("Error while executing compiler instruction: {}", e))
+                            return Err(format!(
+                                "Error while executing compiler instruction: {}",
+                                e
+                            ));
                         }
                     }
                 }
                 NodeType::Instruction(instr) => {
                     match self.process_instruction(instr, &child.children, &current_label) {
-                        Ok(_) => {},
-                        Err(e) => {
-                            return Err(format!("Error while processing instruction: {}", e))
-                        }
+                        Ok(_) => {}
+                        Err(e) => return Err(format!("Error while processing instruction: {}", e)),
                     }
                 }
                 NodeType::Label(name) => {
                     let current_section = match self.sections.get_mut(&self.current_section) {
                         Some(s) => s,
                         None => {
-                            return Err(format!("Section '{}' does not exist! Maybe compiler bug?", self.current_section))
+                            return Err(format!(
+                                "Section '{}' does not exist! Maybe compiler bug?",
+                                self.current_section
+                            ));
                         }
                     };
                     let pointer: usize;
@@ -1638,22 +1724,22 @@ version! It may not be compatible!");
                     }
 
                     if current_section.labels.contains_key(name) {
-                        return Err(format!("Label '{}' is redefined!", name))
+                        return Err(format!("Label '{}' is redefined!", name));
                     }
 
                     let label = ObjectLabelSymbol {
                         name: name.clone(),
                         ptr: pointer as u64,
                     };
-                    
+
                     current_section.labels.insert(name.clone(), label);
-                    
+
                     if !name.contains('@') {
                         // FIXME: This is the easiest fix i can think about now
                         current_label = name.clone();
                     }
                 }
-                _ => unexpected_node!(child)
+                _ => unexpected_node!(child),
             }
         }
 

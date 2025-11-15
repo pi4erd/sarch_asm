@@ -15,11 +15,12 @@ impl Macro {
             return Err(LexerError::Lexer {
                 message: format!(
                     "Incorrect number of arguments for macro call: {} != {}",
-                    args.len(), self.args.len()
+                    args.len(),
+                    self.args.len()
                 ),
                 line: token.line,
                 column: token.column,
-            })
+            });
         }
 
         let mut tokens = Vec::new();
@@ -27,7 +28,8 @@ impl Macro {
         for token in self.token_list.iter() {
             match token.kind {
                 LexerTokenType::Escaped => {
-                    let arg = self.args
+                    let arg = self
+                        .args
                         .iter()
                         .enumerate()
                         .find(|(_, a)| *a == token.slice.as_ref());
@@ -38,9 +40,9 @@ impl Macro {
                         return Err(LexerError::EOF {
                             line: token.line,
                             column: token.column,
-                        })
+                        });
                     }
-                },
+                }
                 _ => tokens.push(token.clone()),
             }
         }
@@ -55,19 +57,14 @@ pub struct Preprocessor<'a> {
 }
 
 impl<'a> Preprocessor<'a> {
-    pub fn new(
-        included: &'a mut HashMap<String, String>,
-    ) -> Self {
+    pub fn new(included: &'a mut HashMap<String, String>) -> Self {
         Self {
             included,
             macro_list: HashMap::new(),
         }
     }
 
-    pub fn preprocess(
-        &mut self,
-        tokens: Vec<LexerToken>
-    ) -> LexerResult<Vec<LexerToken>> {
+    pub fn preprocess(&mut self, tokens: Vec<LexerToken>) -> LexerResult<Vec<LexerToken>> {
         let mut new = Vec::new();
 
         let mut token_iter = tokens.into_iter().peekable();
@@ -75,13 +72,13 @@ impl<'a> Preprocessor<'a> {
         while let Some(token) = token_iter.next() {
             match token.kind {
                 LexerTokenType::PreprocessInstruction => {
-                    let instruction_name = &token.slice[1..token.slice.len()]; 
+                    let instruction_name = &token.slice[1..token.slice.len()];
 
                     self.run_instruction(
                         instruction_name,
                         &mut new,
                         token.clone(),
-                        &mut token_iter
+                        &mut token_iter,
                     )?;
                 }
                 LexerTokenType::Identifier => {
@@ -101,11 +98,9 @@ impl<'a> Preprocessor<'a> {
         Ok(new)
     }
 
-    fn collect_arguments<I>(
-        token: LexerToken,
-        token_iter: &mut I,
-    ) -> LexerResult<Vec<LexerToken>> where
-        I: Iterator<Item = LexerToken>
+    fn collect_arguments<I>(token: LexerToken, token_iter: &mut I) -> LexerResult<Vec<LexerToken>>
+    where
+        I: Iterator<Item = LexerToken>,
     {
         let mut args = Vec::new();
 
@@ -114,13 +109,12 @@ impl<'a> Preprocessor<'a> {
         while let Some(token) = token_iter.next() {
             args.push(token.clone());
 
-            let token = token_iter.next()
-                .ok_or(LexerError::EOF {
-                    line: token.line,
-                    column: token.column
-                })?;
+            let token = token_iter.next().ok_or(LexerError::EOF {
+                line: token.line,
+                column: token.column,
+            })?;
             last_token = Some(token.clone());
-            
+
             if token.kind != LexerTokenType::Comma {
                 break;
             }
@@ -142,17 +136,17 @@ impl<'a> Preprocessor<'a> {
         token: LexerToken,
         new_tokens: &mut Vec<LexerToken>,
         token_iter: &mut I,
-    ) -> LexerResult<()> where
-        I: Iterator<Item = LexerToken>
+    ) -> LexerResult<()>
+    where
+        I: Iterator<Item = LexerToken>,
     {
         let macro_def = &self.macro_list[macro_name];
 
-        let token = token_iter.next()
-            .ok_or(LexerError::EOF {
-                line: token.line,
-                column: token.column,
-            })?;
-        
+        let token = token_iter.next().ok_or(LexerError::EOF {
+            line: token.line,
+            column: token.column,
+        })?;
+
         let args: Vec<LexerToken>;
 
         match token.kind {
@@ -178,17 +172,15 @@ impl<'a> Preprocessor<'a> {
         I: Iterator<Item = LexerToken>,
     {
         match instruction_name {
-            "macro" => {
-                instructions::macro_definition(&mut self.macro_list, prev_token, token_iter)
+            "macro" => instructions::macro_definition(&mut self.macro_list, prev_token, token_iter),
+            "include" => instructions::include(self.included, new_tokens, prev_token, token_iter),
+            _ => {
+                return Err(LexerError::Lexer {
+                    message: format!("unknown preprocessor instruction: {}", instruction_name),
+                    line: prev_token.line,
+                    column: prev_token.column,
+                });
             }
-            "include" => {
-                instructions::include(self.included, new_tokens, prev_token, token_iter)
-            },
-            _ => return Err(LexerError::Lexer {
-                message: format!("unknown preprocessor instruction: {}", instruction_name),
-                line: prev_token.line,
-                column: prev_token.column,
-            })
         }
     }
 }
@@ -197,13 +189,14 @@ mod instructions {
     use super::Macro;
     use std::{collections::HashMap, fs, io::Read, rc::Rc};
 
-    use crate::{lexer::{LexerError, LexerResult, LexerToken, LexerTokenType, tokenize}, preprocessor::Preprocessor};
+    use crate::{
+        lexer::{LexerError, LexerResult, LexerToken, LexerTokenType, tokenize},
+        preprocessor::Preprocessor,
+    };
 
-    fn collect_arguments<I>(
-        token: LexerToken,
-        token_iter: &mut I,
-    ) -> LexerResult<Vec<String>> where
-        I: Iterator<Item = LexerToken>
+    fn collect_arguments<I>(token: LexerToken, token_iter: &mut I) -> LexerResult<Vec<String>>
+    where
+        I: Iterator<Item = LexerToken>,
     {
         let mut args: Vec<String> = Vec::new();
 
@@ -213,25 +206,27 @@ mod instructions {
             match token.kind {
                 LexerTokenType::Identifier => {
                     args.push(token.slice.to_string());
-                    let token = token_iter.next()
-                        .ok_or(LexerError::EOF {
-                            line: token.line,
-                            column: token.column,
-                        })?;
+                    let token = token_iter.next().ok_or(LexerError::EOF {
+                        line: token.line,
+                        column: token.column,
+                    })?;
                     last_token = Some(token.clone());
-                    
+
                     if token.kind != LexerTokenType::Comma {
                         break;
                     }
-                },
-                _ => return Err(LexerError::Lexer {
-                    message: format!("Unexpected token {:?}. {:?} expected.",
-                        token.kind,
-                        LexerTokenType::Identifier,
-                    ),
-                    line: token.line,
-                    column: token.column,
-                })
+                }
+                _ => {
+                    return Err(LexerError::Lexer {
+                        message: format!(
+                            "Unexpected token {:?}. {:?} expected.",
+                            token.kind,
+                            LexerTokenType::Identifier,
+                        ),
+                        line: token.line,
+                        column: token.column,
+                    });
+                }
             }
         }
 
@@ -239,15 +234,15 @@ mod instructions {
             .ok_or(LexerError::EOF {
                 line: token.line,
                 column: token.column,
-            })?.expect(LexerTokenType::RParen)?;
+            })?
+            .expect(LexerTokenType::RParen)?;
 
-        return Ok(args)
+        return Ok(args);
     }
 
-    fn collect_macro_tokens<I>(
-        token_iter: &mut I
-    ) -> LexerResult<Vec<LexerToken>> where 
-        I: Iterator<Item = LexerToken>
+    fn collect_macro_tokens<I>(token_iter: &mut I) -> LexerResult<Vec<LexerToken>>
+    where
+        I: Iterator<Item = LexerToken>,
     {
         let mut unmatched_brackets = 1;
         let mut tokens: Vec<LexerToken> = Vec::new();
@@ -275,48 +270,50 @@ mod instructions {
         macro_list: &mut HashMap<String, Macro>,
         token: LexerToken,
         token_iter: &mut I,
-    ) -> LexerResult<()> where
+    ) -> LexerResult<()>
+    where
         I: Iterator<Item = LexerToken>,
     {
-        let token = token_iter.next()
-            .ok_or(LexerError::EOF {
-                line: token.line,
-                column: token.column,
-            })?;
+        let token = token_iter.next().ok_or(LexerError::EOF {
+            line: token.line,
+            column: token.column,
+        })?;
         token.expect(LexerTokenType::Identifier)?;
 
         let macro_name = token.slice.to_string();
 
-        let mut token = token_iter.next()
-            .ok_or(LexerError::EOF {
-                line: token.line,
-                column: token.column,
-            })?;
-        
+        let mut token = token_iter.next().ok_or(LexerError::EOF {
+            line: token.line,
+            column: token.column,
+        })?;
+
         let mut args: Option<Vec<String>> = None;
         let mut token_list: Vec<LexerToken>;
 
         if token.kind == LexerTokenType::LParen {
             args = Some(collect_arguments(token.clone(), token_iter)?);
-            token = token_iter.next()
-                .ok_or(LexerError::EOF {
-                    line: token.line,
-                    column: token.column,
-                })?;
+            token = token_iter.next().ok_or(LexerError::EOF {
+                line: token.line,
+                column: token.column,
+            })?;
         }
 
         match token.kind {
             LexerTokenType::LBracket => {
                 token_list = collect_macro_tokens(token_iter)?;
             }
-            _ => return Err(LexerError::Lexer {
-                message: format!("Unexpected token {:?}. {:?} or {:?} expected.",
-                    token.kind,
-                    LexerTokenType::LBracket, LexerTokenType::LParen,
-                ),
-                line: token.line,
-                column: token.column,
-            })
+            _ => {
+                return Err(LexerError::Lexer {
+                    message: format!(
+                        "Unexpected token {:?}. {:?} or {:?} expected.",
+                        token.kind,
+                        LexerTokenType::LBracket,
+                        LexerTokenType::LParen,
+                    ),
+                    line: token.line,
+                    column: token.column,
+                });
+            }
         }
 
         token_list = token_list
@@ -326,11 +323,11 @@ mod instructions {
 
         let macro_def = Macro {
             args: args.unwrap_or(Vec::new()),
-            token_list
+            token_list,
         };
 
         macro_list.insert(macro_name, macro_def);
-        
+
         Ok(())
     }
 
@@ -339,8 +336,9 @@ mod instructions {
         new_tokens: &mut Vec<LexerToken>,
         token: LexerToken,
         token_iter: &mut I,
-    ) -> LexerResult<()> where
-        I: Iterator<Item = LexerToken>
+    ) -> LexerResult<()>
+    where
+        I: Iterator<Item = LexerToken>,
     {
         // TODO: Fix recursive includes
 
@@ -350,7 +348,7 @@ mod instructions {
             return Err(LexerError::EOF {
                 line: token.line,
                 column: token.column,
-            })
+            });
         }
 
         let new_token = new_token.unwrap();
@@ -360,7 +358,7 @@ mod instructions {
                 message: format!("unexpected token {:?}", new_token.kind),
                 line: new_token.line,
                 column: new_token.column,
-            })
+            });
         }
 
         let filename = &new_token.slice[1..new_token.slice.len() - 1];
@@ -375,8 +373,8 @@ mod instructions {
         println!("Including {}", filename);
 
         // include the file
-        let mut file = fs::File::open(filename)
-            .map_err(|e| LexerError::Other { error: Box::new(e) })?;
+        let mut file =
+            fs::File::open(filename).map_err(|e| LexerError::Other { error: Box::new(e) })?;
 
         let mut code = String::new();
         file.read_to_string(&mut code)

@@ -1,41 +1,76 @@
-use std::{error::Error, fmt::Display, rc::Rc};
 use logos::{Lexer, Logos};
+use std::{error::Error, fmt::Display, rc::Rc};
 
 #[derive(Logos, Debug, PartialEq)]
 #[logos(skip r"[ \t\f\r]+", extras = (usize, usize))]
 enum Token {
-    #[regex(r"[\@a-zA-Z_][\@a-zA-Z_0-9]*", character_callback)] Identifier((usize, usize)),
-    #[regex(r"(?:0x[0-9a-fA-F]+|0b[01]+|(?:0d|)\d+)", character_callback)] Integer((usize, usize)),
-    #[regex(r"[\@a-zA-Z_][\@a-zA-Z_0-9]*:", character_callback)] Label((usize, usize)),
-    #[regex(r"(?:\d+\.\d*|\d*\.\d+)", character_callback, priority = 5)] FloatingPoint((usize, usize)),
-    #[regex(r"\.\w+", character_callback, priority = 4)] CompilerInstruction((usize, usize)),
-    #[regex(r"\%\w+", character_callback, priority = 4)] PreprocessInstruction((usize, usize)),
-    #[regex(r#""[^"]*""#, character_callback, priority = 6)] String((usize, usize)),
-    #[regex(r"'.'", character_callback)] Character((usize, usize)),
-    #[regex(r"[;#].*", newline_callback)] Comment,
-    #[token("\n", newline_callback)] Newline,
-    #[token("\\", character_callback)] EscapeChar((usize, usize)),
-    #[token("(", character_callback)] LParen((usize, usize)),
-    #[token(")", character_callback)] RParen((usize, usize)),
-    #[token("{", character_callback)] LBracket((usize, usize)),
-    #[token("}", character_callback)] RBracket((usize, usize)),
-    #[token(",", character_callback)] Comma((usize, usize)),
-    #[token("+", character_callback)] Plus((usize, usize)),
-    #[token("-", character_callback)] Minus((usize, usize)),
-    #[token("*", character_callback)] Multiply((usize, usize)),
-    #[token("/", character_callback)] Divide((usize, usize)),
+    #[regex(r"[\@a-zA-Z_][\@a-zA-Z_0-9]*", character_callback)]
+    Identifier((usize, usize)),
+    #[regex(r"(?:0x[0-9a-fA-F]+|0b[01]+|(?:0d|)\d+)", character_callback)]
+    Integer((usize, usize)),
+    #[regex(r"[\@a-zA-Z_][\@a-zA-Z_0-9]*:", character_callback)]
+    Label((usize, usize)),
+    #[regex(r"(?:\d+\.\d*|\d*\.\d+)", character_callback, priority = 5)]
+    FloatingPoint((usize, usize)),
+    #[regex(r"\.\w+", character_callback, priority = 4)]
+    CompilerInstruction((usize, usize)),
+    #[regex(r"\%\w+", character_callback, priority = 4)]
+    PreprocessInstruction((usize, usize)),
+    #[regex(r#""[^"]*""#, character_callback, priority = 6)]
+    String((usize, usize)),
+    #[regex(r"'.'", character_callback)]
+    Character((usize, usize)),
+    #[regex(r"[;#].*", newline_callback)]
+    Comment,
+    #[token("\n", newline_callback)]
+    Newline,
+    #[token("\\", character_callback)]
+    EscapeChar((usize, usize)),
+    #[token("(", character_callback)]
+    LParen((usize, usize)),
+    #[token(")", character_callback)]
+    RParen((usize, usize)),
+    #[token("{", character_callback)]
+    LBracket((usize, usize)),
+    #[token("}", character_callback)]
+    RBracket((usize, usize)),
+    #[token(",", character_callback)]
+    Comma((usize, usize)),
+    #[token("+", character_callback)]
+    Plus((usize, usize)),
+    #[token("-", character_callback)]
+    Minus((usize, usize)),
+    #[token("*", character_callback)]
+    Multiply((usize, usize)),
+    #[token("/", character_callback)]
+    Divide((usize, usize)),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LexerTokenType {
-    Identifier, Integer, Label, FloatingPoint,
-    CompilerInstruction, Newline, String,
-    Character, Comment, LParen, RParen, LBracket, RBracket,
-    Escaped, Comma, Plus,
-    Minus, Multiply, Divide,
+    Identifier,
+    Integer,
+    Label,
+    FloatingPoint,
+    CompilerInstruction,
+    Newline,
+    String,
+    Character,
+    Comment,
+    LParen,
+    RParen,
+    LBracket,
+    RBracket,
+    Escaped,
+    Comma,
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
     PreprocessInstruction,
 
-    EnterInclude, ExitInclude,
+    EnterInclude,
+    ExitInclude,
 }
 
 #[derive(Clone, Debug)]
@@ -50,15 +85,16 @@ impl LexerToken {
     pub fn expect(&self, token_type: LexerTokenType) -> LexerResult<()> {
         if self.kind != token_type {
             return Err(LexerError::Lexer {
-                message: format!("Unexpected token {:?}. {:?} expected.",
+                message: format!(
+                    "Unexpected token {:?}. {:?} expected.",
                     self.kind, token_type,
                 ),
                 line: self.line,
                 column: self.column,
-            })
+            });
         }
 
-        return Ok(())
+        return Ok(());
     }
 }
 
@@ -75,15 +111,19 @@ pub enum LexerError {
     },
     Other {
         error: Box<dyn Error>,
-    }
+    },
 }
 
 impl Display for LexerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Lexer { message, line, column } => {
+            Self::Lexer {
+                message,
+                line,
+                column,
+            } => {
                 write!(f, "{}: line {} column {}", message, line, column)
-            },
+            }
             Self::EOF { line, column } => {
                 write!(f, "Unexpected EOF: line {} column {}", line, column)
             }
@@ -109,7 +149,10 @@ fn character_callback(lex: &mut Lexer<Token>) -> (usize, usize) {
     (line + 1, column + 1)
 }
 
-fn tokenize_internal<'s>(code: &'s str, prev_include: Option<&str>) -> LexerResult<Vec<LexerToken>> {
+fn tokenize_internal<'s>(
+    code: &'s str,
+    prev_include: Option<&str>,
+) -> LexerResult<Vec<LexerToken>> {
     if prev_include.is_some() {
         todo!("including file")
     }
@@ -128,7 +171,7 @@ fn tokenize_internal<'s>(code: &'s str, prev_include: Option<&str>) -> LexerResu
                 message: format!("Unrecognized character '{}'.", slice),
                 line: lex.extras.0,
                 column: lex.extras.1,
-            })
+            });
         }
 
         if escaping {
@@ -144,8 +187,8 @@ fn tokenize_internal<'s>(code: &'s str, prev_include: Option<&str>) -> LexerResu
 
             continue;
         }
-        
-        let token = token.unwrap();        
+
+        let token = token.unwrap();
 
         let token_kind = match &token {
             Token::Identifier(_) => LexerTokenType::Identifier,
@@ -183,7 +226,7 @@ fn tokenize_internal<'s>(code: &'s str, prev_include: Option<&str>) -> LexerResu
         tokens.push(token);
     }
 
-    return Ok(tokens)
+    return Ok(tokens);
 }
 
 pub fn tokenize<'s>(code: &'s str) -> LexerResult<Vec<LexerToken>> {

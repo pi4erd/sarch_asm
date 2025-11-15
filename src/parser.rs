@@ -3,8 +3,10 @@ use std::collections::HashMap;
 
 macro_rules! returnerr {
     ($token:expr, $filename:expr) => {
-        return Err(format!("Unexpected token {:?} \"{}\" in {}:{}:{}", 
-            $token.kind, $token.slice, $filename, $token.line, $token.column))
+        return Err(format!(
+            "Unexpected token {:?} \"{}\" in {}:{}:{}",
+            $token.kind, $token.slice, $filename, $token.line, $token.column
+        ))
     };
 }
 
@@ -12,17 +14,15 @@ macro_rules! unwrap_from_option {
     ($option:expr) => {
         match $option {
             Some(n) => n,
-            None => {
-                return Err(format!("Unexpected EOF at the end!"))
-            }
+            None => return Err(format!("Unexpected EOF at the end!")),
         }
-    }
+    };
 }
 
 pub struct Registers<'a> {
     registers32: HashMap<&'a str, u8>,
     registers8: HashMap<&'a str, u8>,
-    registers16: HashMap<&'a str, u8>
+    registers16: HashMap<&'a str, u8>,
 }
 
 impl Registers<'_> {
@@ -143,33 +143,35 @@ impl Registers<'_> {
     pub fn get_name8<'a>(&'a self, idx: u8) -> Option<&'a str> {
         match self.registers8.iter().find(|(_, r)| **r == idx) {
             Some((rn, _)) => Some(rn),
-            None => None
+            None => None,
         }
     }
 
     pub fn get_name32<'a>(&'a self, idx: u8) -> Option<&'a str> {
         match self.registers32.iter().find(|(_, r)| **r == idx) {
             Some((rn, _)) => Some(rn),
-            None => None
+            None => None,
         }
     }
 
     pub fn get_name16<'a>(&'a self, idx: u8) -> Option<&'a str> {
         match self.registers16.iter().find(|(_, r)| **r == idx) {
             Some((rn, _)) => Some(rn),
-            None => None
+            None => None,
         }
     }
 
     pub fn has_key<'a>(&'a self, key: &'a str) -> bool {
-        self.registers32.contains_key(key) || self.registers16.contains_key(key)
+        self.registers32.contains_key(key)
+            || self.registers16.contains_key(key)
             || self.registers8.contains_key(key)
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
-    Negate, Identity
+    Negate,
+    Identity,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -182,7 +184,8 @@ pub enum BinaryOp {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExpressionType {
-    Binary(BinaryOp), Unary(UnaryOp)
+    Binary(BinaryOp),
+    Unary(UnaryOp),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -202,12 +205,15 @@ pub enum NodeType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParserNode {
     pub node_type: NodeType,
-    pub children: Vec<ParserNode>
+    pub children: Vec<ParserNode>,
 }
 
 impl ParserNode {
     pub fn new() -> Self {
-        Self { children: Vec::new(), node_type: NodeType::Program }
+        Self {
+            children: Vec::new(),
+            node_type: NodeType::Program,
+        }
     }
 }
 
@@ -219,7 +225,7 @@ pub struct Parser {
 
 impl Parser {
     pub fn new() -> Self {
-        Self { 
+        Self {
             root: ParserNode::new(),
             filename: String::new(),
             last_label: String::new(),
@@ -227,7 +233,11 @@ impl Parser {
     }
 
     // TODO: Add token lookahead (peekable)
-    pub fn parse(&mut self, filename: &str, tokens: &Vec<LexerToken>) -> Result<&ParserNode, String> {
+    pub fn parse(
+        &mut self,
+        filename: &str,
+        tokens: &Vec<LexerToken>,
+    ) -> Result<&ParserNode, String> {
         self.filename = filename.to_string();
 
         let mut iterator = tokens.iter();
@@ -244,15 +254,14 @@ impl Parser {
     fn parse_top_level<'a>(
         &mut self,
         token: &LexerToken,
-        iterator: &mut core::slice::Iter<'a, LexerToken>
+        iterator: &mut core::slice::Iter<'a, LexerToken>,
     ) -> Result<Option<ParserNode>, String> {
-        match token.kind { // Highest level match
+        match token.kind {
+            // Highest level match
             LexerTokenType::CompilerInstruction => {
                 Ok(Some(self.parse_compiler_instruction(token, iterator)?))
             }
-            LexerTokenType::Identifier => {
-                Ok(Some(self.parse_instruction(token, iterator)?))
-            }
+            LexerTokenType::Identifier => Ok(Some(self.parse_instruction(token, iterator)?)),
             LexerTokenType::Label => {
                 let txt: &str = &token.slice[..token.slice.len() - 1];
 
@@ -267,33 +276,33 @@ impl Parser {
 
                 let node = ParserNode {
                     node_type: NodeType::Label(label_text),
-                    children: Vec::new()
+                    children: Vec::new(),
                 };
 
                 Ok(Some(node))
             }
-            LexerTokenType::Newline => { Ok(None) }
-            _ => returnerr!(token, self.filename)
+            LexerTokenType::Newline => Ok(None),
+            _ => returnerr!(token, self.filename),
         }
     }
 
     fn parse_instruction(
         &mut self,
         current_token: &LexerToken,
-        tokens: &mut core::slice::Iter<'_, LexerToken>
+        tokens: &mut core::slice::Iter<'_, LexerToken>,
     ) -> Result<ParserNode, String> {
         let mut node = ParserNode {
             node_type: NodeType::Instruction(current_token.slice.to_string()),
-            children: Vec::new()
+            children: Vec::new(),
         };
 
         let mut token = match tokens.next() {
             Some(tok) => tok,
-            None => return Ok(node)
+            None => return Ok(node),
         };
 
         if token.kind == LexerTokenType::Newline {
-            return Ok(node)
+            return Ok(node);
         }
 
         loop {
@@ -305,7 +314,7 @@ impl Parser {
             match token.kind {
                 LexerTokenType::Comma => {}
                 LexerTokenType::Newline => break,
-                _ => returnerr!(token, self.filename)
+                _ => returnerr!(token, self.filename),
             }
 
             token = unwrap_from_option!(tokens.next());
@@ -317,13 +326,13 @@ impl Parser {
     fn parse_compiler_instruction(
         &mut self,
         current_token: &LexerToken,
-        tokens: &mut core::slice::Iter<'_, LexerToken>
+        tokens: &mut core::slice::Iter<'_, LexerToken>,
     ) -> Result<ParserNode, String> {
         let mut node = ParserNode {
             node_type: NodeType::CompilerInstruction(
-                current_token.slice[1..current_token.slice.len()].to_string()
+                current_token.slice[1..current_token.slice.len()].to_string(),
             ),
-            children: Vec::new()
+            children: Vec::new(),
         };
 
         let mut token = unwrap_from_option!(tokens.next());
@@ -343,7 +352,8 @@ impl Parser {
         &mut self,
         current_token: &LexerToken,
         tokens: &mut core::slice::Iter<'_, LexerToken>,
-        use_registers: bool, str_available: bool
+        use_registers: bool,
+        str_available: bool,
     ) -> Result<ParserNode, String> {
         let rgs = Registers::new();
         match current_token.kind {
@@ -367,30 +377,35 @@ impl Parser {
                 let num = match try_convert {
                     Ok(n) => n,
                     Err(err) => {
-                        return Err(format!("Error occured while parsing an expression:\n{}", err))
+                        return Err(format!(
+                            "Error occured while parsing an expression:\n{}",
+                            err
+                        ));
                     }
                 };
                 let node = ParserNode {
                     node_type: NodeType::ConstInteger(num),
-                    children: Vec::new()
+                    children: Vec::new(),
                 };
                 Ok(node)
             }
             LexerTokenType::Character => {
-                let char = match current_token.slice[1..current_token.slice.chars().count() - 1].bytes().next() {
+                let char = match current_token.slice[1..current_token.slice.chars().count() - 1]
+                    .bytes()
+                    .next()
+                {
                     Some(c) => c,
-                    None => {
-                        return Err(format!("Cannot parse nonexistant character in Char!"))
-                    }
+                    None => return Err(format!("Cannot parse nonexistant character in Char!")),
                 };
                 let node = ParserNode {
                     node_type: NodeType::ConstInteger(char as i64),
-                    children: Vec::new()
+                    children: Vec::new(),
                 };
                 Ok(node)
             }
             // TODO: Add chaining expressions without adding more parenthesis
-            LexerTokenType::LParen => { // Used for creating expressions
+            LexerTokenType::LParen => {
+                // Used for creating expressions
                 let mut next = unwrap_from_option!(tokens.next());
 
                 let lhs = self.parse_expression(next, tokens, use_registers, str_available)?;
@@ -403,11 +418,13 @@ impl Parser {
                     node_type: NodeType::Expression(match operator.kind {
                         LexerTokenType::Plus => ExpressionType::Binary(BinaryOp::Addition),
                         LexerTokenType::Minus => ExpressionType::Binary(BinaryOp::Subtraction),
-                        LexerTokenType::Multiply => ExpressionType::Binary(BinaryOp::Multiplication),
+                        LexerTokenType::Multiply => {
+                            ExpressionType::Binary(BinaryOp::Multiplication)
+                        }
                         LexerTokenType::Divide => ExpressionType::Binary(BinaryOp::Division),
-                        _ => returnerr!(operator, self.filename)
+                        _ => returnerr!(operator, self.filename),
                     }),
-                    children: vec![lhs, rhs]
+                    children: vec![lhs, rhs],
                 };
 
                 next = unwrap_from_option!(tokens.next());
@@ -419,13 +436,15 @@ impl Parser {
             }
             LexerTokenType::String => {
                 if !str_available {
-                    return Err(format!("Using String where not allowed: {} at line {} column {}",
-                    current_token.slice, current_token.line, current_token.column))
+                    return Err(format!(
+                        "Using String where not allowed: {} at line {} column {}",
+                        current_token.slice, current_token.line, current_token.column
+                    ));
                 }
                 let _str = &current_token.slice[1..current_token.slice.chars().count() - 1];
                 let node = ParserNode {
                     node_type: NodeType::String(_str.to_string()),
-                    children: Vec::new()
+                    children: Vec::new(),
                 };
                 Ok(node)
             }
@@ -435,12 +454,15 @@ impl Parser {
                 let num = match try_convert {
                     Ok(n) => n,
                     Err(err) => {
-                        return Err(format!("Error occured while parsing an expression:\n{}", err))
+                        return Err(format!(
+                            "Error occured while parsing an expression:\n{}",
+                            err
+                        ));
                     }
                 };
                 let node = ParserNode {
                     node_type: NodeType::ConstFloat(num),
-                    children: Vec::new()
+                    children: Vec::new(),
                 };
                 Ok(node)
             }
@@ -464,25 +486,24 @@ impl Parser {
             LexerTokenType::Identifier => {
                 if rgs.has_key(current_token.slice.as_ref()) {
                     if !use_registers {
-                        return Err(
-                            format!("Register identifier used in incorrect context in \"{}\" at line {} column {}",
-                                current_token.slice, current_token.line, current_token.column
-                            )
-                        )
+                        return Err(format!(
+                            "Register identifier used in incorrect context in \"{}\" at line {} column {}",
+                            current_token.slice, current_token.line, current_token.column
+                        ));
                     }
                     let node = ParserNode {
                         node_type: NodeType::Register(current_token.slice.to_string()),
-                        children: Vec::new()
+                        children: Vec::new(),
                     };
-                    return Ok(node)
+                    return Ok(node);
                 }
                 let node = ParserNode {
                     node_type: NodeType::Identifier(current_token.slice.to_string()),
-                    children: Vec::new()
+                    children: Vec::new(),
                 };
                 Ok(node)
             }
-            _ => returnerr!(current_token, self.filename)
+            _ => returnerr!(current_token, self.filename),
         }
     }
 }
