@@ -254,6 +254,24 @@ fn include_test() {
 }
 
 #[test]
+fn comma_test() {
+    use std::collections::HashMap;
+
+    let code = "
+    loadid A, C # correct
+    loadid A C # incorrect
+    ";
+
+    let mut included = HashMap::new();
+    let tokens = super::lex(&mut included, code, false).unwrap();
+    let result = super::parse("comma_test", tokens, false);
+
+    assert!(result.is_err(), "No commas between arguments MUST give error.");
+
+    println!("{:?}", result);
+}
+
+#[test]
 fn lex_test() {
     use crate::lexer::LexerTokenType;
     use std::collections::HashMap;

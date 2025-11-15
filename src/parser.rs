@@ -302,11 +302,10 @@ impl Parser {
 
             token = unwrap_from_option!(tokens.next());
 
-            if token.kind != LexerTokenType::Comma {
-                if token.kind != LexerTokenType::Newline {
-                    returnerr!(token, self.filename)
-                }
-                break;
+            match token.kind {
+                LexerTokenType::Comma => {}
+                LexerTokenType::Newline => break,
+                _ => returnerr!(token, self.filename)
             }
 
             token = unwrap_from_option!(tokens.next());
