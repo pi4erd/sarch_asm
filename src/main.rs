@@ -81,7 +81,7 @@ pub fn parse(
 
 fn main() -> ExitCode {
     // Debug stuff
-    let print_tokens = true;
+    let print_tokens = false;
     let print_ast = false;
     let print_object_tree = false;
 
