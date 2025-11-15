@@ -90,9 +90,9 @@ fn sublabel_test() {
 #[test]
 fn macro_test() {
     use std::collections::HashMap;
+    use crate::lexer::LexerTokenType;
     
-    let code = ".section \"text\"
-
+    let code = "
     %macro some_macro {
         ; macro content
         loadid 0x00, r0
@@ -100,18 +100,19 @@ fn macro_test() {
         loadid 0xBAD, ra ; ve
     }
 
-    %call some_macro
-    %call some_macro
-    %call some_macro
-    %call some_macro
-    %call some_macro
-
-    .section \"data\"
-    .section \"rodata\"
+    some_macro
+    some_macro
+    some_macro
+    some_macro
+    some_macro
     ";
 
     let mut included = HashMap::new();
     let tokens = super::lex(&mut included, &code, false).unwrap();
+
+    assert!(tokens.iter().find(|t| t.kind == LexerTokenType::PreprocessInstruction).is_none());
+    assert!(tokens.iter().find(|t| t.kind == LexerTokenType::Comment).is_none());
+
     let _node = super::parse("test", tokens, false).unwrap();
 }
 

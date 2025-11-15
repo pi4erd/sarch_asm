@@ -46,10 +46,30 @@ pub struct LexerToken {
     pub column: usize,
 }
 
+impl LexerToken {
+    pub fn expect(&self, token_type: LexerTokenType) -> LexerResult<()> {
+        if self.kind != token_type {
+            return Err(LexerError::Lexer {
+                message: format!("Unexpected token {:?}. {:?} expected.",
+                    self.kind, token_type,
+                ),
+                line: self.line,
+                column: self.column,
+            })
+        }
+
+        return Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub enum LexerError {
     Lexer {
         message: String,
+        line: usize,
+        column: usize,
+    },
+    EOF {
         line: usize,
         column: usize,
     },
@@ -61,9 +81,12 @@ pub enum LexerError {
 impl Display for LexerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LexerError::Lexer { message, line, column } => {
+            Self::Lexer { message, line, column } => {
                 write!(f, "{}: line {} column {}", message, line, column)
             },
+            Self::EOF { line, column } => {
+                write!(f, "Unexpected EOF: line {} column {}", line, column)
+            }
             Self::Other { error } => {
                 write!(f, "{error}")
             }
