@@ -85,6 +85,16 @@ fn main() -> ExitCode {
     let print_ast = false;
     let print_object_tree = false;
 
+    if print_tokens || print_ast || print_object_tree {
+        // Made a mistake once ;-;
+        eprintln!("Warning!!!!! DEBUG STUFF ENABLED. DO NOT COMMIT TO PROD!!!!!");
+        eprintln!("Warning!!!!! DEBUG STUFF ENABLED. DO NOT COMMIT TO PROD!!!!!");
+        eprintln!("Warning!!!!! DEBUG STUFF ENABLED. DO NOT COMMIT TO PROD!!!!!");
+        eprintln!("Warning!!!!! DEBUG STUFF ENABLED. DO NOT COMMIT TO PROD!!!!!");
+        eprintln!("Warning!!!!! DEBUG STUFF ENABLED. DO NOT COMMIT TO PROD!!!!!");
+        eprintln!("Warning!!!!! DEBUG STUFF ENABLED. DO NOT COMMIT TO PROD!!!!!");
+    }
+
     let mut args: std::env::Args = args();
 
     // Inputs
